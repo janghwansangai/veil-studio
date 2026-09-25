@@ -179,7 +179,7 @@ enum FaceAnalyzer {
                     append(state:i,rect:rect,time:time,detected:true); matchedStates.insert(i)
                 } else {
                     var thumb: Data?
-                    if let cg = crop(oriented(),rect,margin:0.45,edge:180) { thumb = NSBitmapImageRep(cgImage:cg).representation(using:.jpeg,properties:[.compressionFactor:0.8]) }
+                    if let cg = crop(oriented(),rect,margin:0.45,edge:320) { thumb = NSBitmapImageRep(cgImage:cg).representation(using:.jpeg,properties:[.compressionFactor:0.8]) }
                     tracks.append(FaceTrack(name:"인물 후보 \(tracks.count+1)",thumbnail:thumb,samples:[FaceSample(time:time,rect:rect)]))
                     prints.append(printValue.map { [$0] } ?? [])
                     states.append(State(index:tracks.count-1,last:rect,lastTime:time,lastDetected:time,printTime:printValue == nil ? -Double.infinity : time))

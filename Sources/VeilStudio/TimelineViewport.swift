@@ -58,7 +58,7 @@ import SwiftUI
 
 func rulerLabel(_ seconds: Double, step: Double) -> String {
     guard seconds.isFinite else { return "" }
-    let s = max(0,seconds)
+    let s = step >= 1 ? max(0,seconds).rounded() : max(0,seconds)
     if step < 1 { return String(format:"%d:%04.1f",Int(s)/60,s.truncatingRemainder(dividingBy:60)) }
     if s >= 3600 { return String(format:"%d:%02d:%02d",Int(s)/3600,(Int(s)/60)%60,Int(s)%60) }
     return String(format:"%d:%02d",Int(s)/60,Int(s)%60)

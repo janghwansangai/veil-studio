@@ -42,6 +42,7 @@ extension EditorStore {
         status = added > 0 ? "작업 목록에 \(added)개 추가 · ‘순차 실행’을 누르세요" : "이미 작업 목록에 있는 미디어입니다"
     }
     func enqueueAllMedia() { enqueue(project.media.filter(\.isVisual).map(\.id)) }
+    func stopQueue() { if let t = backgroundTasks.first(where:{ $0.kind == .queue }) { cancelBackground(t.id) } }
     func removeJob(_ id: UUID) { guard !queueRunning else { return }; project.queue.removeAll { $0.id == id } }
     func moveJob(_ id: UUID, by offset: Int) {
         guard !queueRunning, let i = project.queue.firstIndex(where:{ $0.id == id }) else { return }
@@ -95,16 +96,17 @@ extension EditorStore {
     // Runs waiting jobs one after another: analyse, then export automatic ones. A failure
     // marks that job and moves on; cancelling stops after the current step.
     func runQueue(onlyApproved: Bool = false) {
-        guard loaded, !busy, !queueRunning else { return }
+        guard loaded, !queueRunning else { return }
         let waiting = project.queue.filter { $0.state == .approved || (!onlyApproved && $0.state == .queued) }
         guard !waiting.isEmpty else { status = "실행할 작업이 없습니다"; return }
         if waiting.contains(where:{ $0.mode == .automatic || $0.state == .approved }) { guard batchFolderReady() else { return } }
-        begin("작업 목록 실행 준비"); queueRunning = true; let token = cancellation
+        let task = startBackground(.queue,title:"작업 목록 · \(waiting.count)개"); queueRunning = true; let token = task.token; let session = sessionID
+        status = "작업 목록을 실행합니다 · 그동안 계속 편집할 수 있습니다"
         Task {
             var done = 0, failed = 0
             let total = waiting.count
             for (n,job) in waiting.enumerated() {
-                if token.cancelled { break }
+                if token.cancelled || sessionID != session { break }
                 guard let source = project.media.first(where:{ $0.id == job.source }) else { continue }
                 queueCurrent = job.id
                 let prefix = "[\(n+1)/\(total)] \(source.name)"
@@ -115,8 +117,9 @@ extension EditorStore {
                         updateJob(job.id) { $0.state = .analyzing; $0.message = "얼굴 분석 중"; $0.progress = 0 }
                         let ranges = source.isImage ? [] : [TimelineRange(start:0,end:source.duration)]
                         let output = try await FaceAnalyzer.analyze(source:source,ranges:ranges,mode:project.batch.analysis,cancellation:token) { [weak self = self] v,s in
-                            Task { @MainActor in guard let self, !token.cancelled else { return }; self.progress = (Double(n)+v*0.7)/Double(total); self.status = "\(prefix) · \(s)"; self.updateJob(job.id) { $0.progress = v*0.7 } }
+                            Task { @MainActor in guard let self, !token.cancelled else { return }; self.reportBackground(task.id,(Double(n)+v*0.7)/Double(total),"\(prefix) · \(s)"); self.updateJob(job.id) { $0.progress = v*0.7 } }
                         }
+                        guard sessionID == session else { break }
                         storeAnalysis(output,ranges:ranges,source:source.id)
                         let persons = Set(output.tracks.map(\.groupID)).count
                         if job.mode == .automatic {
@@ -128,7 +131,7 @@ extension EditorStore {
                         }
                     }
                     if state == .approved {
-                        try await exportJob(job.id,source:source.id,token:token,index:n,total:total)
+                        try await exportJob(job.id,source:source.id,token:token,index:n,total:total,task:task.id)
                     }
                     done += 1
                 } catch is CancellationError {
@@ -140,20 +143,21 @@ extension EditorStore {
                     Log.error("batch \(source.name): \(error.localizedDescription)")
                 }
             }
+            endBackground(task.id)
+            guard sessionID == session else { return }
             queueCurrent = nil; queueRunning = false
-            if token.cancelled { finish(); status = "작업 목록 실행을 멈췄습니다 · 완료 \(done)개" }
-            else { finish(); status = "작업 목록 완료 · 처리 \(done)개" + (failed > 0 ? " · 실패 \(failed)개 (목록에서 이유 확인)" : "") }
-            refreshPreview()
+            if token.cancelled { status = "작업 목록 실행을 멈췄습니다 · 완료 \(done)개" }
+            else { status = "작업 목록 완료 · 처리 \(done)개" + (failed > 0 ? " · 실패 \(failed)개 (목록에서 이유 확인)" : "") }
         }
     }
-    private func exportJob(_ id: UUID, source sourceID: UUID, token: Cancellation, index: Int, total: Int) async throws {
+    private func exportJob(_ id: UUID, source sourceID: UUID, token: Cancellation, index: Int, total: Int, task: UUID) async throws {
         guard var p = project.singleSourceProject(sourceID), let source = project.media.first(where:{ $0.id == sourceID }) else { throw StudioError.message("출력할 미디어를 찾을 수 없습니다.") }
         if !source.isImage { p.export.resolution = project.batch.resolution }
         let folder = URL(fileURLWithPath:project.batch.folder)
         let url = outputURL(for:source,folder:folder)
         updateJob(id) { $0.state = .exporting; $0.message = "내보내는 중"; $0.progress = 0.7 }
         try await MediaEngine.export(p,to:url,cancellation:token) { [weak self = self] v,_ in
-            Task { @MainActor in guard let self, !token.cancelled else { return }; self.progress = (Double(index)+0.7+v*0.3)/Double(total); self.status = "[\(index+1)/\(total)] \(source.name) · 내보내는 중 \(Int(v*100))%"; self.updateJob(id) { $0.progress = 0.7+v*0.3 } }
+            Task { @MainActor in guard let self, !token.cancelled else { return }; self.reportBackground(task,(Double(index)+0.7+v*0.3)/Double(total),"[\(index+1)/\(total)] \(source.name) · 내보내는 중 \(Int(v*100))%"); self.updateJob(id) { $0.progress = 0.7+v*0.3 } }
         }
         updateJob(id) { $0.state = .done; $0.output = url.path; $0.message = "완료 · \(url.lastPathComponent)"; $0.progress = 1 }
         lastExport = url

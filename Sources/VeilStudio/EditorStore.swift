@@ -103,6 +103,11 @@ enum InspectorTab: String, CaseIterable { case clip = "클립", mask = "마스�
     private let activity = ActivityToken()
     private(set) var sessionID = UUID()
     @Published var savedProject: Project?
+    @Published var backgroundTasks: [BackgroundTask] = []
+    @Published var timelineDetached = false
+    @Published var facesDetached = false
+    var activityCount = 0
+    let activityToken = ActivityToken()
     @Published var shuttleRate = 0.0
 
     var overlayTime: Double { project.overlaysOnTimeline == true ? playhead : sourcePlayhead }
@@ -172,6 +177,13 @@ enum InspectorTab: String, CaseIterable { case clip = "클립", mask = "마스�
     func confirmLeaving() -> Bool {
         focusTimeline(); endTimelineGesture(); pause()
         guard !busy else { error = "진행 중인 작업을 취소하거나 완료한 후 다시 시도해 주세요."; return false }
+        if !backgroundTasks.isEmpty {
+            let alert = NSAlert(); alert.messageText = "진행 중인 작업 \(backgroundTasks.count)개를 취소할까요?"
+            alert.informativeText = backgroundTasks.map(\.title).prefix(4).joined(separator:"\n") + "\n계속하면 이 작업들은 취소되고 결과가 저장되지 않습니다."
+            alert.addButton(withTitle:"작업 취소하고 계속"); alert.addButton(withTitle:"돌아가기")
+            guard alert.runModal() == .alertFirstButtonReturn else { return false }
+            cancelAllBackground()
+        }
         guard hasUnsavedChanges else { return true }
         let alert = NSAlert(); alert.messageText = "변경한 프로젝트를 저장하시겠습니까?"
         alert.informativeText = "저장하지 않고 계속하면 현재 변경 사항을 잃을 수 있습니다."
@@ -190,6 +202,7 @@ enum InspectorTab: String, CaseIterable { case clip = "클립", mask = "마스�
         }
     }
     func setProject(_ p: Project) {
+        cancelAllBackground(); backgroundTasks = []; activityCount = 0; activityToken.end(); queueRunning = false; queueCurrent = nil
         pause(); previewTask?.cancel(); recoveryTask?.cancel(); previewRevision += 1
         previewReady = false; player.currentItem?.cancelPendingSeeks(); player.replaceCurrentItem(with:nil)
         built = nil; stillPreview = nil

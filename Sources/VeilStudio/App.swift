@@ -4,6 +4,8 @@ import AppKit
 @main struct VeilStudioApp: App {
     @StateObject private var store = EditorStore()
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismissWindow) private var dismissWindow
     var body: some Scene {
         WindowGroup {
             EditorView().environmentObject(store).preferredColorScheme(.dark)
@@ -12,6 +14,10 @@ import AppKit
                 .onAppear { delegate.store = store; delegate.offerRecoveryIfNeeded() }
         }
         .windowStyle(.hiddenTitleBar).defaultSize(width:1540,height:980)
+        Window("타임라인",id:DetachedWindow.timeline) { DetachedTimelineView().environmentObject(store).preferredColorScheme(.dark) }
+            .defaultSize(width:1500,height:460)
+        Window("인물 선택",id:DetachedWindow.faces) { DetachedFacesView().environmentObject(store).preferredColorScheme(.dark) }
+            .defaultSize(width:980,height:760)
         .commands {
             let typing = store.editingText
             let editable = store.canEditTimeline && !typing
@@ -91,6 +97,10 @@ import AppKit
                 Button("타이틀 추가") { store.addTitle() }.keyboardShortcut("t",modifiers:[.control]).disabled(!store.canEditTimeline)
                 Button("얼굴 분석") { store.analyze() }.keyboardShortcut("f",modifiers:[.command,.shift]).disabled(!store.loaded || store.busy)
                 Button("자동 자막") { store.transcribe() }.keyboardShortcut("r",modifiers:[.command,.shift]).disabled(!store.loaded || store.busy || store.project.isImage)
+            }
+            CommandMenu("창") {
+                Button(store.timelineDetached ? "타임라인 다시 합치기" : "타임라인 창 분리") { if store.timelineDetached { dismissWindow(id:DetachedWindow.timeline) } else { openWindow(id:DetachedWindow.timeline) } }.keyboardShortcut("t",modifiers:[.command,.option])
+                Button(store.facesDetached ? "인물 선택 창 닫기" : "인물 선택 창 열기") { if store.facesDetached { dismissWindow(id:DetachedWindow.faces) } else { openWindow(id:DetachedWindow.faces) } }.keyboardShortcut("p",modifiers:[.command,.option])
             }
             CommandGroup(replacing:.appInfo) { Button("Veil Studio 정보") { store.helpSheet = true } }
             CommandGroup(replacing:.help) {

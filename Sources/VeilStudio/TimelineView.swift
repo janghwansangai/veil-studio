@@ -9,6 +9,7 @@ let timelineLabelWidth = 118.0
 struct TimelineView: View {
     @EnvironmentObject var store: EditorStore
     @ObservedObject var viewport: TimelineViewport
+    @Environment(\.openWindow) private var openWindow
     var body: some View {
         VStack(spacing:0) {
             toolbar
@@ -46,11 +47,14 @@ struct TimelineView: View {
                     }
                 }
                 .overlay(alignment:.topLeading) {
+                    // Explicit top-leading stack: the line spans ruler and lanes, the head sits on the ruler.
                     let x = viewport.x(store.playhead)
-                    if x >= -1, x <= trackWidth+1 {
-                        Rectangle().fill(Color.white).frame(width:1).offset(x:timelineLabelWidth+6+x).allowsHitTesting(false)
-                        Triangle().fill(Color.white).frame(width:11,height:8).offset(x:timelineLabelWidth+6+x-5.5).allowsHitTesting(false)
-                    }
+                    ZStack(alignment:.topLeading) {
+                        if x >= -1, x <= trackWidth+1 {
+                            Rectangle().fill(Color.white).frame(width:1).frame(maxHeight:.infinity).offset(x:timelineLabelWidth+6+x)
+                            Triangle().fill(Color.white).frame(width:11,height:8).offset(x:timelineLabelWidth+6+x-5,y:36)
+                        }
+                    }.frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.topLeading).allowsHitTesting(false)
                 }
                 .onAppear { viewport.update(width:trackWidth,duration:store.project.editedDuration) }
                 .onChange(of:trackWidth) { viewport.update(width:trackWidth,duration:store.project.editedDuration) }
@@ -59,7 +63,7 @@ struct TimelineView: View {
             }.padding(.top,4)
             Text(store.tool == .blade ? "자르기 도구: 블록을 클릭하면 그 위치에서 나뉩니다 · A 키로 선택 도구" : "클릭: 선택 · 드래그: 이동/트랙 변경 · 양 끝: 길이 조절 · ⌥휠: 확대 · 가로 휠/Shift+휠: 이동 · 미디어를 끌어다 놓아 배치")
                 .font(.system(size:9)).foregroundStyle(store.tool == .blade ? Color.orange : Color.muted).frame(maxWidth:.infinity,alignment:.leading).padding(.bottom,6)
-        }.buttonStyle(.plain).textFieldStyle(.roundedBorder).padding(.horizontal,14).background(Color.panel.opacity(0.5))
+        }.buttonStyle(.hover).textFieldStyle(.roundedBorder).padding(.horizontal,14).background(Color.panel.opacity(0.5))
     }
     func highlighted(_ row: TimelineRow) -> Bool { (store.selectedTrack == row.kind || store.selectedTrack.linkedToVideo && row.kind.linkedToVideo) && store.selectedLane == row.lane }
     func icon(_ kind: EditTrack) -> String {
@@ -94,19 +98,22 @@ struct TimelineView: View {
             Button { viewport.zoom(by:1.5,around:store.playhead) } label: { Image(systemName:"plus.magnifyingglass") }.help("확대 ⌘=")
             Button("전체") { viewport.fit() }.help("타임라인 전체 보기 ⇧Z")
             Text(frameTimecode(store.project.editedDuration,fps:store.project.fps)).font(.system(size:10,design:.monospaced)).foregroundStyle(Color.muted)
+            if !store.timelineDetached {
+                Button { openWindow(id:DetachedWindow.timeline) } label: { Image(systemName:"macwindow.on.rectangle") }.help("타임라인을 별도 창으로 분리합니다. 다른 모니터로 옮길 수 있습니다 (⌥⌘T)")
+            }
         }.font(.system(size:10)).frame(height:34)
     }
     var rangeBar: some View {
         HStack(spacing:9) {
             Label("내보내기 구간",systemImage:"inset.filled.rectangle").foregroundStyle(Color.mint)
-            Button("시작 I",action:store.markIn)
-            Button("끝 O",action:store.markOut)
+            Button("시작 I",action:store.markIn).help("재생 위치를 내보내기 시작점으로 지정합니다 (I)")
+            Button("끝 O",action:store.markOut).help("재생 위치를 내보내기 끝점으로 지정합니다 (O)")
             TextField("내보내기 시작",value:Binding(get:{store.project.exportRange?.start ?? 0},set:{store.setExportRange(start:$0,end:store.project.exportRange?.end ?? store.project.editedDuration)}),format:.number.precision(.fractionLength(2))).frame(width:62)
             Text("–")
             TextField("내보내기 끝",value:Binding(get:{store.project.exportRange?.end ?? store.project.editedDuration},set:{store.setExportRange(start:store.project.exportRange?.start ?? 0,end:$0)}),format:.number.precision(.fractionLength(2))).frame(width:62)
-            Button("선택 범위",action:store.exportSelectedClips).disabled(!store.selectionAvailable)
-            Button("해제") { store.project.exportRange = nil }.disabled(store.project.exportRange == nil)
-            Button("범위 삭제",action:store.deleteMarkedRange).disabled(store.project.exportRange == nil)
+            Button("선택 범위",action:store.exportSelectedClips).help("선택한 컷(또는 블록)의 시작~끝을 내보내기 구간으로 지정합니다").disabled(!store.selectionAvailable)
+            Button("해제") { store.project.exportRange = nil }.help("내보내기 구간을 지우고 전체를 내보냅니다").disabled(store.project.exportRange == nil)
+            Button("범위 삭제",action:store.deleteMarkedRange).help("지정 구간을 지우고 뒤의 내용을 앞으로 붙입니다").disabled(store.project.exportRange == nil)
             Divider().frame(height:14)
             Menu("트랙 추가") {
                 Button("영상 트랙") { store.addLane(.video) }
@@ -115,7 +122,7 @@ struct TimelineView: View {
                 Button("영역 마스크 트랙") { store.addLane(.regions) }
                 Button("자막 트랙") { store.addLane(.captions) }
             }.frame(width:78)
-            Button("겹침 분리") { store.project.separateOverlappingOverlays() }
+            Button("겹침 분리") { store.project.separateOverlappingOverlays() }.help("같은 트랙에서 겹친 자막·영역·타이틀을 다른 트랙으로 나눕니다")
             Spacer(minLength:4)
             Text("\(store.project.exportRange == nil ? "전체" : "지정 구간") · \(timecode(store.project.exportDuration))").foregroundStyle(Color.mint)
         }.font(.system(size:10)).frame(height:30).disabled(!store.canEditTimeline || store.project.editedDuration <= 0)
@@ -197,9 +204,11 @@ struct TimelineLanes: View {
         let entries = store.project.timeline
         let visible = viewport.visible
         let pps = viewport.pixelsPerSecond
-        ZStack(alignment:.topLeading) {
-            ForEach(Array(rowOffsets.enumerated()),id:\.element.row.id) { _,item in
-                let row = item.row, y = item.y, h = rowHeight(row.kind)
+        let total = rows.reduce(0) { $0+rowHeight($1.kind)+rowSpacing }
+        // Rows are stacked, not offset, so each track always sits beside its label.
+        VStack(alignment:.leading,spacing:rowSpacing) {
+            ForEach(rows) { row in
+                let h = rowHeight(row.kind)
                 ZStack(alignment:.topLeading) {
                     RoundedRectangle(cornerRadius:3).fill(Color.raised.opacity(row.kind == .faces ? 0.25 : 0.4))
                         .contentShape(Rectangle())
@@ -212,18 +221,26 @@ struct TimelineLanes: View {
                             return store.dropMedia(raw,at:store.snapTime(viewport.time(point.x),pixelsPerSecond:pps),row:row)
                         }
                     rowContent(row,entries:entries,visible:visible,height:h)
-                }.frame(width:viewport.width,height:h).offset(y:y)
+                }.frame(width:viewport.width,height:h,alignment:.topLeading)
             }
-            ForEach(store.project.markers.filter { visible.contains($0.time) }) { marker in
-                Rectangle().fill(Color.orange.opacity(0.45)).frame(width:1).offset(x:viewport.x(marker.time)).allowsHitTesting(false)
-            }
-        }.frame(width:viewport.width,height:rows.reduce(0) { $0+rowHeight($1.kind)+rowSpacing },alignment:.topLeading).clipped()
-            .onAppear { store.thumbnails.onUpdate = { [weak store] in store?.thumbnailRevision += 1 } }
-            .environment(\.timelineScale,pps)
-    }
-    var rowOffsets: [(row: TimelineRow, y: Double)] {
-        var y = 0.0
-        return rows.map { row in defer { y += rowHeight(row.kind)+rowSpacing }; return (row,y) }
+            Spacer(minLength:0)
+        }
+        .frame(width:viewport.width,height:total,alignment:.topLeading)
+        .overlay(alignment:.topLeading) {
+            ZStack(alignment:.topLeading) {
+                ForEach(store.project.markers.filter { visible.contains($0.time) }) { marker in
+                    Rectangle().fill(Color.orange.opacity(0.45)).frame(width:1,height:total).offset(x:viewport.x(marker.time))
+                }
+            }.frame(width:viewport.width,height:total,alignment:.topLeading).allowsHitTesting(false)
+        }
+        .clipped()
+        .onContinuousHover { phase in
+            // Scissors pointer while the blade tool is active.
+            if case .active = phase, store.tool == .blade { Cursors.blade.set() }
+        }
+        .onChange(of:store.tool) { if store.tool == .select { NSCursor.arrow.set() } }
+        .onAppear { store.thumbnails.onUpdate = { [weak store] in store?.thumbnailRevision += 1 } }
+        .environment(\.timelineScale,pps)
     }
     @ViewBuilder func rowContent(_ row: TimelineRow, entries: [TimelineEntry], visible: TimelineRange, height: Double) -> some View {
         switch row.kind {
@@ -329,7 +346,7 @@ struct VideoClipCell: View {
     }
     func trimHandle(start: Bool) -> some View {
         RoundedRectangle(cornerRadius:2).fill(Color.white.opacity(0.65)).frame(width:5,height:22).padding(.horizontal,1)
-            .contentShape(Rectangle().inset(by:-3)).onHover { inside in if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() } }
+            .contentShape(Rectangle().inset(by:-3)).hoverCursor(.resizeLeftRight)
             .gesture(DragGesture(minimumDistance:1,coordinateSpace:.global).onChanged { value in
                 if trimOrigin == nil { trimOrigin = start ? entry.clip.start : (entry.clip.freeze != nil ? entry.clip.end : entry.clip.end); store.beginTimelineGesture(); store.selectClip(entry.id) }
                 let seconds = value.translation.width/max(0.001,viewport.pixelsPerSecond)*(entry.clip.freeze != nil ? 1 : entry.clip.rate)
@@ -380,7 +397,8 @@ struct FilmstripView: View {
     let height: Double
     var body: some View {
         let _ = store.thumbnailRevision
-        let slot = max(24,height*16/9)
+        let aspect = source.map { $0.width > 0 && $0.height > 0 ? $0.width/$0.height : 16/9 } ?? 16/9
+        let slot = max(14,height*min(3,max(0.3,aspect)))
         let clipX = viewport.x(entry.start), width = entry.clip.timelineDuration*viewport.pixelsPerSecond
         let first = max(0,Int(floor(-clipX/slot))), last = Int(ceil(min(width,viewport.width-clipX)/slot))
         let step = ThumbnailCache.step(for:slot/viewport.pixelsPerSecond*max(0.001,entry.clip.rate == 0 ? 1 : entry.clip.rate))
@@ -394,9 +412,14 @@ struct FilmstripView: View {
             context.fill(Path(CGRect(origin:.zero,size:size)),with:.color(Color.accent.opacity(0.22)))
             for (x,image) in frames {
                 guard let image else { continue }
-                let aspect = Double(image.width)/max(1,Double(image.height))
-                let w = min(slot,size.height*aspect)
-                context.draw(Image(decorative:image,scale:1),in:CGRect(x:x+(slot-w)/2,y:0,width:w,height:size.height))
+                // Aspect-fill each slot, clipped to it, so neighbouring frames never overlap.
+                let rect = CGRect(x:x,y:0,width:slot,height:size.height)
+                let imageAspect = Double(image.width)/max(1,Double(image.height))
+                let w = max(slot,size.height*imageAspect), h = w/imageAspect
+                var tile = context; tile.clip(to:Path(rect))
+                tile.draw(Image(decorative:image,scale:1),in:CGRect(x:rect.midX-w/2,y:rect.midY-h/2,width:w,height:h))
+                var edge = Path(); edge.move(to:CGPoint(x:rect.maxX,y:0)); edge.addLine(to:CGPoint(x:rect.maxX,y:size.height))
+                context.stroke(edge,with:.color(.black.opacity(0.35)),lineWidth:1)
             }
         }.allowsHitTesting(false)
     }
@@ -487,14 +510,17 @@ struct TimelineRuler: View {
             let visible = viewport.visible
             ZStack(alignment:.topLeading) {
                 Canvas { context,size in
-                    var t = floor(visible.start/steps.minor)*steps.minor
-                    while t <= visible.end+steps.minor {
+                    // Integer tick indices avoid drift from repeatedly adding fractions.
+                    let perMajor = max(1,Int((steps.major/steps.minor).rounded()))
+                    var i = Int(floor(visible.start/steps.minor))
+                    while Double(i)*steps.minor <= visible.end+steps.minor {
+                        let t = Double(i)*steps.minor
                         let x = viewport.x(t)
-                        let major = abs((t/steps.major).rounded()-t/steps.major) < 0.001
+                        let major = i % perMajor == 0
                         var line = Path(); line.move(to:CGPoint(x:x,y:major ? 18 : 28)); line.addLine(to:CGPoint(x:x,y:40))
                         context.stroke(line,with:.color(major ? Color.muted : Color.muted.opacity(0.35)),lineWidth:1)
                         if major { context.draw(Text(rulerLabel(t,step:steps.major)).font(.system(size:8,design:.monospaced)).foregroundColor(Color.muted),at:CGPoint(x:x+3,y:8),anchor:.leading) }
-                        t += steps.minor
+                        i += 1
                     }
                     if store.project.editedDuration > 0 {
                         let end = viewport.x(store.project.editedDuration)

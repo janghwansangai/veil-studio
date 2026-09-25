@@ -13,11 +13,21 @@ extension Color {
 }
 struct ActionStyle: ButtonStyle {
     var primary = false
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label.font(.system(size:12,weight:.semibold)).padding(.horizontal,11).padding(.vertical,7)
-            .foregroundStyle(primary ? Color.base : Color.ink)
-            .background(primary ? Color.mint : Color.raised,in:RoundedRectangle(cornerRadius:7))
-            .opacity(configuration.isPressed ? 0.65 : 1)
+    func makeBody(configuration: Configuration) -> some View { ActionBody(configuration:configuration,primary:primary) }
+    private struct ActionBody: View {
+        let configuration: ButtonStyleConfiguration
+        let primary: Bool
+        @State private var hovering = false
+        @Environment(\.isEnabled) private var enabled
+        var body: some View {
+            configuration.label.font(.system(size:12,weight:.semibold)).padding(.horizontal,11).padding(.vertical,7)
+                .foregroundStyle(primary ? Color.base : Color.ink)
+                .background(primary ? Color.mint.opacity(hovering && enabled ? 0.85 : 1) : Color.raised.opacity(hovering && enabled ? 1 : 0.8),in:RoundedRectangle(cornerRadius:7))
+                .overlay(RoundedRectangle(cornerRadius:7).stroke(Color.white.opacity(hovering && enabled ? 0.18 : 0),lineWidth:1))
+                .opacity(configuration.isPressed ? 0.65 : enabled ? 1 : 0.45)
+                .onHover { hovering = $0 }
+                .hoverCursor(enabled ? .pointingHand : .arrow)
+        }
     }
 }
 struct SectionLabel: View { var title: String; var detail: String = ""; var body: some View { HStack { Text(title).font(.system(size:12,weight:.semibold)).lineLimit(1); Spacer(); Text(detail).font(.system(size:10)).foregroundStyle(Color.muted) }.padding(.bottom,4) } }
@@ -27,6 +37,8 @@ struct EditorView: View {
     @AppStorage("timelineHeight") private var timelineHeight = 330.0
     @State private var resizeStart: Double?
     @EnvironmentObject var store: EditorStore
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismissWindow) private var dismissWindow
     var body: some View {
         VStack(spacing:0) {
             header
@@ -47,9 +59,19 @@ struct EditorView: View {
                             Divider()
                             InspectorPanel().frame(width:268)
                         }.frame(maxHeight:.infinity)
+                        if store.timelineDetached {
+                            HStack(spacing:10) {
+                                Image(systemName:"rectangle.split.1x2").foregroundStyle(Color.accent)
+                                Text("타임라인이 별도 창에 열려 있습니다").font(.system(size:11))
+                                Text(frameTimecode(store.playhead,fps:store.project.fps)).font(.system(size:10,design:.monospaced)).foregroundStyle(Color.muted)
+                                Spacer()
+                                Button { openWindow(id:DetachedWindow.timeline) } label: { Label("타임라인 창 보기",systemImage:"macwindow") }.buttonStyle(ActionStyle()).help("분리된 타임라인 창을 앞으로 가져옵니다")
+                                Button { dismissWindow(id:DetachedWindow.timeline) } label: { Label("다시 합치기",systemImage:"rectangle.bottomhalf.inset.filled") }.buttonStyle(ActionStyle()).help("타임라인을 이 창 아래로 돌려놓습니다 (⌥⌘T)")
+                            }.padding(.horizontal,18).frame(height:40).background(Color.panel)
+                        } else {
                         Rectangle().fill(Color.raised).frame(height:8)
                             .overlay(Capsule().fill(Color.muted).frame(width:44,height:3))
-                            .onHover { inside in if inside { NSCursor.resizeUpDown.push() } else { NSCursor.pop() } }
+                            .hoverCursor(.resizeUpDown)
                             .gesture(DragGesture(minimumDistance:0,coordinateSpace:.global).onChanged { value in
                                 if resizeStart == nil { resizeStart = timelineHeight }
                                 let maximum = max(240,(NSApp.keyWindow?.contentView?.bounds.height ?? 800)-300)
@@ -57,6 +79,7 @@ struct EditorView: View {
                             }.onEnded { _ in resizeStart = nil })
                             .help("위아래로 드래그하여 타임라인 높이 조절")
                         TimelineView(viewport:store.viewport).frame(height:timelineHeight)
+                        }
                     }
                 }
             }.disabled(store.busy)
@@ -100,7 +123,7 @@ struct EditorView: View {
             Label("기기 내 처리",systemImage:"lock.shield").font(.system(size:10)).foregroundStyle(Color.mint).padding(7).background(Color.mint.opacity(0.07),in:Capsule())
             Button { store.importMedia() } label: { Label("가져오기",systemImage:"plus") }.buttonStyle(ActionStyle()).help("미디어 가져오기 ⌘I").disabled(store.busy)
             Button { store.saveProject() } label: { Image(systemName:"square.and.arrow.down") }.buttonStyle(ActionStyle()).help("프로젝트 저장 ⌘S").disabled(!store.loaded || store.busy)
-            Button { store.exportSheet = true } label: { Label("내보내기",systemImage:"arrow.up.right") }.buttonStyle(ActionStyle(primary:true)).disabled(!store.loaded || store.busy)
+            Button { store.exportSheet = true } label: { Label("내보내기",systemImage:"arrow.up.right") }.help("편집 결과를 새 영상·사진 파일로 저장합니다 (⌘E)").buttonStyle(ActionStyle(primary:true)).disabled(!store.loaded || store.busy)
         }.padding(.horizontal,18).padding(.top,20).padding(.bottom,14)
     }
     var navigation: some View {
@@ -117,20 +140,20 @@ struct EditorView: View {
                         .foregroundStyle(store.tab == tab ? Color.accent : Color.muted)
                         .background(store.tab == tab ? Color.accent.opacity(0.10) : .clear,in:RoundedRectangle(cornerRadius:8))
                         .contentShape(Rectangle())
-                }.buttonStyle(.plain)
+                }.buttonStyle(.hover)
             }
             Rectangle().fill(Color.white.opacity(0.07)).frame(height:1).padding(.vertical,12)
-            Button { store.openMedia() } label: { Label("새 프로젝트",systemImage:"doc.badge.plus").font(.system(size:11)) }.buttonStyle(.plain).padding(.horizontal,10).padding(.vertical,6)
-            Button { store.openProject() } label: { Label("프로젝트 열기",systemImage:"square.stack").font(.system(size:11)) }.buttonStyle(.plain).padding(.horizontal,10).padding(.vertical,6)
+            Button { store.openMedia() } label: { Label("새 프로젝트",systemImage:"doc.badge.plus").font(.system(size:11)) }.help("파일을 골라 새 프로젝트를 만듭니다 (⌘O)").buttonStyle(.hover).padding(.horizontal,10).padding(.vertical,6)
+            Button { store.openProject() } label: { Label("프로젝트 열기",systemImage:"square.stack").font(.system(size:11)) }.help("저장한 .veilproject 파일을 엽니다 (⇧⌘O)").buttonStyle(.hover).padding(.horizontal,10).padding(.vertical,6)
             Spacer()
             VStack(alignment:.leading,spacing:8) {
                 Image(systemName:"shield.lefthalf.filled").font(.system(size:18)).foregroundStyle(Color.mint)
                 Text("안심하고, 표현하세요.").font(.system(size:11,weight:.semibold))
                 Text("사진과 영상은 이 Mac에서\n처리됩니다. 원본은 그대로.").font(.system(size:10)).foregroundStyle(Color.muted).lineSpacing(4)
             }.padding(12).frame(maxWidth:.infinity,alignment:.leading).background(Color.raised.opacity(0.6),in:RoundedRectangle(cornerRadius:10))
-            Button { store.helpSheet = true } label: { Label("사용 안내 · 단축키",systemImage:"questionmark.circle").font(.system(size:10)) }.buttonStyle(.plain).foregroundStyle(Color.muted).padding(.vertical,12).padding(.horizontal,8)
+            Button { store.helpSheet = true } label: { Label("사용 안내 · 단축키",systemImage:"questionmark.circle").font(.system(size:10)) }.help("기능 안내와 단축키를 봅니다").buttonStyle(.hover).foregroundStyle(Color.muted).padding(.vertical,12).padding(.horizontal,8)
             Text("제작자 다있쌤 로디").font(.system(size:10,weight:.medium)).foregroundStyle(Color.mint).padding(.horizontal,8)
-            Text("VEIL STUDIO   /   0.8.0").font(.system(size:8,weight:.medium,design:.monospaced)).foregroundStyle(Color.muted.opacity(0.65)).padding(.horizontal,8).padding(.bottom,12)
+            Text("VEIL STUDIO   /   0.8.1").font(.system(size:8,weight:.medium,design:.monospaced)).foregroundStyle(Color.muted.opacity(0.65)).padding(.horizontal,8).padding(.bottom,12)
         }.padding(.horizontal,8).background(Color.panel.opacity(0.6))
     }
     var toolBar: some View {
@@ -140,17 +163,17 @@ struct EditorView: View {
             Spacer()
             switch store.tab {
             case .media:
-                Button { store.importMedia() } label: { Label("미디어 가져오기",systemImage:"plus") }.buttonStyle(ActionStyle())
+                Button { store.importMedia() } label: { Label("미디어 가져오기",systemImage:"plus") }.help("영상·사진·오디오 파일이나 폴더를 프로젝트에 추가합니다 (⌘I)").buttonStyle(ActionStyle())
             case .faces:
                 if !store.project.isImage { Toggle("분석 후 자동 자막",isOn:$store.autoCaptions).font(.system(size:10)).toggleStyle(.checkbox) }
-                Button { store.analyze() } label: { Label(store.faceSource?.analysisComplete == true ? "다시 분석" : "얼굴 분석",systemImage:"sparkle.viewfinder") }.buttonStyle(ActionStyle()).disabled(!store.loaded || store.faceSource == nil)
+                Button { store.analyze() } label: { Label(store.faceSource?.analysisComplete == true ? "다시 분석" : "얼굴 분석",systemImage:"sparkle.viewfinder") }.help("선택한 미디어의 얼굴을 찾아 인물별로 묶습니다 (⇧⌘F)").buttonStyle(ActionStyle()).disabled(!store.loaded || store.faceSource == nil || store.isAnalyzing(store.faceSource?.id))
             case .regions:
-                Button { store.drawMode.toggle() } label: { Label(store.drawMode ? "그리기 취소" : "영역 그리기",systemImage:"plus.viewfinder") }.buttonStyle(ActionStyle(primary:store.drawMode)).disabled(!store.loaded)
+                Button { store.drawMode.toggle() } label: { Label(store.drawMode ? "그리기 취소" : "영역 그리기",systemImage:"plus.viewfinder") }.help("미리보기 위를 끌어 가릴 영역을 그립니다").buttonStyle(ActionStyle(primary:store.drawMode)).disabled(!store.loaded)
             case .captions:
-                Button(action:store.importSRT) { Text("SRT 가져오기") }.buttonStyle(ActionStyle()).disabled(!store.loaded || store.project.isImage)
-                Button(action:{ store.transcribe() }) { Label("자동 자막",systemImage:"waveform") }.buttonStyle(ActionStyle()).disabled(!store.loaded || store.project.isImage)
+                Button(action:store.importSRT) { Text("SRT 가져오기") }.help("SRT 자막 파일을 불러와 현재 자막을 바꿉니다").buttonStyle(ActionStyle()).disabled(!store.loaded || store.project.isImage)
+                Button(action:{ store.transcribe() }) { Label(store.speechRunning ? "인식 중…" : "자동 자막",systemImage:"waveform") }.help("타임라인의 모든 소리를 인식해 자막을 만듭니다. 기존 자막은 교체됩니다 (⇧⌘R)").buttonStyle(ActionStyle()).disabled(!store.loaded || store.project.isImage)
             case .titles:
-                Button { store.addTitle() } label: { Label("타이틀 추가",systemImage:"plus") }.buttonStyle(ActionStyle()).disabled(!store.canEditTimeline)
+                Button { store.addTitle() } label: { Label("타이틀 추가",systemImage:"plus") }.help("재생 위치에 3초짜리 타이틀을 추가합니다 (⌃T)").buttonStyle(ActionStyle()).disabled(!store.canEditTimeline)
             case .queue: EmptyView()
             }
         }.padding(.horizontal,18).frame(height:52)
@@ -180,13 +203,13 @@ struct EditorView: View {
             Text(store.project.isImage ? "STILL IMAGE" : "EDITED PREVIEW").font(.system(size:8,weight:.semibold,design:.monospaced)).tracking(1).foregroundStyle(Color.muted)
             Spacer()
             if !store.project.isImage {
-                Button { store.jumpEdit(-1) } label: { Image(systemName:"backward.end.fill") }.buttonStyle(.plain).help("이전 편집 지점 ↑")
-                Button { store.step(frames:-1) } label: { Image(systemName:"chevron.left") }.buttonStyle(.plain).help("1프레임 뒤로 ←")
-                Button { store.shuttle(-1) } label: { Image(systemName:"backward.fill") }.buttonStyle(.plain).help("되감기 J")
-                Button(action:store.togglePlay) { Image(systemName:store.playing && store.shuttleRate >= 0 ? "pause.fill" : "play.fill").font(.system(size:14)).frame(width:32,height:32).background(Color.raised,in:Circle()) }.buttonStyle(.plain).help("재생/일시정지 Space")
-                Button { store.shuttle(1) } label: { Image(systemName:"forward.fill") }.buttonStyle(.plain).help("빨리 재생 L (누를수록 빨라짐)")
-                Button { store.step(frames:1) } label: { Image(systemName:"chevron.right") }.buttonStyle(.plain).help("1프레임 앞으로 →")
-                Button { store.jumpEdit(1) } label: { Image(systemName:"forward.end.fill") }.buttonStyle(.plain).help("다음 편집 지점 ↓")
+                Button { store.jumpEdit(-1) } label: { Image(systemName:"backward.end.fill") }.buttonStyle(.hover).help("이전 편집 지점 ↑")
+                Button { store.step(frames:-1) } label: { Image(systemName:"chevron.left") }.buttonStyle(.hover).help("1프레임 뒤로 ←")
+                Button { store.shuttle(-1) } label: { Image(systemName:"backward.fill") }.buttonStyle(.hover).help("되감기 J")
+                Button(action:store.togglePlay) { Image(systemName:store.playing && store.shuttleRate >= 0 ? "pause.fill" : "play.fill").font(.system(size:14)).frame(width:32,height:32).background(Color.raised,in:Circle()) }.buttonStyle(.hover).help("재생/일시정지 Space")
+                Button { store.shuttle(1) } label: { Image(systemName:"forward.fill") }.buttonStyle(.hover).help("빨리 재생 L (누를수록 빨라짐)")
+                Button { store.step(frames:1) } label: { Image(systemName:"chevron.right") }.buttonStyle(.hover).help("1프레임 앞으로 →")
+                Button { store.jumpEdit(1) } label: { Image(systemName:"forward.end.fill") }.buttonStyle(.hover).help("다음 편집 지점 ↓")
                 if store.shuttleRate != 0 && store.shuttleRate != 1 { Text("\(store.shuttleRate > 0 ? "" : "◀ ")\(Int(abs(store.shuttleRate)))×").font(.system(size:10,weight:.bold)).foregroundStyle(.yellow) }
             }
             Spacer()
@@ -195,11 +218,21 @@ struct EditorView: View {
     }
     var statusBar: some View {
         HStack(spacing:10) {
-            Circle().fill(store.busy ? Color.accent : Color.mint).frame(width:5,height:5)
+            Circle().fill(store.busy || !store.backgroundTasks.isEmpty ? Color.accent : Color.mint).frame(width:5,height:5)
             Text(store.status).font(.system(size:10)).lineLimit(1)
-            if store.busy { ProgressView(value:max(0,min(1,store.progress))).frame(width:150); Text("\(Int(max(0,min(1,store.progress))*100))%").font(.system(size:10,design:.monospaced)); Button("취소",action:store.cancel).buttonStyle(.plain).foregroundStyle(Color.accent) }
+            if store.busy { ProgressView(value:max(0,min(1,store.progress))).frame(width:150); Text("\(Int(max(0,min(1,store.progress))*100))%").font(.system(size:10,design:.monospaced)); Button("취소",action:store.cancel).buttonStyle(.hover).foregroundStyle(Color.accent) }
+            ForEach(store.backgroundTasks.prefix(3)) { task in
+                HStack(spacing:6) {
+                    ProgressView().controlSize(.mini)
+                    Text(task.title).font(.system(size:10,weight:.medium)).lineLimit(1)
+                    ProgressView(value:task.progress).frame(width:80)
+                    Text("\(Int(task.progress*100))%").font(.system(size:9,design:.monospaced)).foregroundStyle(Color.muted)
+                    Button { store.cancelBackground(task.id) } label: { Image(systemName:"xmark.circle.fill") }.buttonStyle(.hover).foregroundStyle(Color.muted).help("이 작업 취소")
+                }.padding(.horizontal,8).padding(.vertical,3).background(Color.accent.opacity(0.12),in:Capsule()).help(task.message)
+            }
+            if store.backgroundTasks.count > 3 { Text("+\(store.backgroundTasks.count-3)").font(.system(size:10)).foregroundStyle(Color.muted) }
             Spacer()
-            if let url = store.lastExport { Button("Finder에서 보기") { NSWorkspace.shared.activateFileViewerSelecting([url]) }.buttonStyle(.plain).foregroundStyle(Color.mint) }
+            if let url = store.lastExport { Button("Finder에서 보기") { NSWorkspace.shared.activateFileViewerSelecting([url]) }.help("마지막으로 내보낸 파일을 Finder에서 보여 줍니다").buttonStyle(.hover).foregroundStyle(Color.mint) }
             Text("⌘I 가져오기 · ⌘S 저장 · ⌘B 분할 · J/K/L · M 마커").font(.system(size:9)).foregroundStyle(Color.muted)
         }.padding(.horizontal,18).frame(height:30).background(Color.panel)
     }

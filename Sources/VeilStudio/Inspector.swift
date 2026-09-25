@@ -27,7 +27,7 @@ struct ValueRow: View {
             HStack {
                 Text(label); Spacer()
                 Text(String(format:format,value.wrappedValue)).foregroundStyle(Color.muted).monospacedDigit()
-                if let neutral, abs(value.wrappedValue-neutral) > 0.0001 { Button { value.wrappedValue = neutral } label: { Image(systemName:"arrow.counterclockwise") }.buttonStyle(.plain).foregroundStyle(Color.muted).help("기본값") }
+                if let neutral, abs(value.wrappedValue-neutral) > 0.0001 { Button { value.wrappedValue = neutral } label: { Image(systemName:"arrow.counterclockwise") }.buttonStyle(.hover).foregroundStyle(Color.muted).help("기본값") }
             }.font(.system(size:10))
             Slider(value:value,in:range).controlSize(.small)
         }
@@ -78,7 +78,7 @@ struct VideoClipInspector: View {
                         HStack { Text("재생 속도"); Spacer(); Text("\(Int((clip.rate*100).rounded()))%").foregroundStyle(clip.rate == 1 ? Color.muted : Color.yellow).monospacedDigit() }.font(.system(size:10))
                         Slider(value:Binding(get:{ log2(clip.rate) },set:{ store.setSpeed(pow(2,($0*4).rounded()/4)) }),in:-3...3).controlSize(.small)
                     }
-                    Button { store.addFreezeFrame() } label: { Label("재생 위치에 정지 화면 추가",systemImage:"pause.rectangle") }.buttonStyle(ActionStyle())
+                    Button { store.addFreezeFrame() } label: { Label("재생 위치에 정지 화면 추가",systemImage:"pause.rectangle") }.help("재생 위치의 장면을 멈춘 화면으로 2초 끼워 넣습니다 (⌥F)").buttonStyle(ActionStyle())
                     Text("속도를 바꿔도 음높이는 유지됩니다. 재생 헤드가 이 컷 위에 있을 때 정지 화면이 추가됩니다.").font(.system(size:9)).foregroundStyle(Color.muted)
                 }
             }
@@ -110,8 +110,8 @@ struct VideoClipInspector: View {
                     ValueRow(label:"아래",value:transform(\.cropBottom,"cropB"),range:0...0.45,neutral:0)
                 }.font(.system(size:10))
                 HStack {
-                    Button("PiP 오른쪽 아래") { store.updateClips { c in c.transform = ClipTransform(scale:0.35,x:0.3,y:-0.3) } }
-                    Button("초기화") { store.updateClips { c in c.transform = nil } }
+                    Button("PiP 오른쪽 아래") { store.updateClips { c in c.transform = ClipTransform(scale:0.35,x:0.3,y:-0.3) } }.help("작은 화면(35%)으로 오른쪽 아래에 배치합니다")
+                    Button("초기화") { store.updateClips { c in c.transform = nil } }.help("위치·크기·회전·자르기를 원래대로 되돌립니다")
                 }.buttonStyle(ActionStyle()).font(.system(size:9))
             }
             group("색 보정",icon:"camera.filters") {
@@ -122,10 +122,10 @@ struct VideoClipInspector: View {
                 ValueRow(label:"색온도 (따뜻하게 +)",value:color(\.temperature,"temperature"),range:-1...1,neutral:0)
                 ValueRow(label:"색조 (자홍 +)",value:color(\.tint,"tint"),range:-1...1,neutral:0)
                 HStack {
-                    Button("흑백") { store.updateClips { c in var a = c.color ?? ColorAdjust(); a.saturation = 0; c.color = a } }
-                    Button("선명하게") { store.updateClips { c in var a = c.color ?? ColorAdjust(); a.contrast = 1.12; a.saturation = 1.2; c.color = a } }
-                    Button("따뜻하게") { store.updateClips { c in var a = c.color ?? ColorAdjust(); a.temperature = 0.35; c.color = a } }
-                    Button("초기화") { store.updateClips { c in c.color = nil } }
+                    Button("흑백") { store.updateClips { c in var a = c.color ?? ColorAdjust(); a.saturation = 0; c.color = a } }.help("채도를 0으로 만들어 흑백으로 바꿉니다")
+                    Button("선명하게") { store.updateClips { c in var a = c.color ?? ColorAdjust(); a.contrast = 1.12; a.saturation = 1.2; c.color = a } }.help("대비와 채도를 조금 높입니다")
+                    Button("따뜻하게") { store.updateClips { c in var a = c.color ?? ColorAdjust(); a.temperature = 0.35; c.color = a } }.help("색온도를 따뜻하게 바꿉니다")
+                    Button("초기화") { store.updateClips { c in c.color = nil } }.help("색 보정을 모두 되돌립니다")
                 }.buttonStyle(ActionStyle()).font(.system(size:9))
             }
             group("소리",icon:"speaker.wave.2") {
@@ -136,7 +136,7 @@ struct VideoClipInspector: View {
                         ValueRow(label:"페이드 인",value:bind("afi",get:{ $0.audioFadeIn ?? 0 },set:{ c,v in c.audioFadeIn = v < 0.01 ? nil : v }),range:0...5,format:"%.1f")
                         ValueRow(label:"페이드 아웃",value:bind("afo",get:{ $0.audioFadeOut ?? 0 },set:{ c,v in c.audioFadeOut = v < 0.01 ? nil : v }),range:0...5,format:"%.1f")
                     }
-                    Button { store.detachAudio() } label: { Label("오디오 분리",systemImage:"rectangle.split.1x2") }.buttonStyle(ActionStyle()).disabled(clip.audioMuted == true)
+                    Button { store.detachAudio() } label: { Label("오디오 분리",systemImage:"rectangle.split.1x2") }.help("이 컷의 소리를 독립 오디오 트랙으로 옮깁니다 (⌃⇧S)").buttonStyle(ActionStyle()).disabled(clip.audioMuted == true)
                 } else { Text(clip.freeze != nil ? "정지 화면에는 소리가 없습니다." : "이 미디어에는 오디오가 없습니다.").font(.system(size:10)).foregroundStyle(Color.muted) }
             }
         }
@@ -184,7 +184,7 @@ struct TitleInspector: View {
             ValueRow(label:"나타나기 (초)",value:$title.fadeIn,range:0...2,format:"%.1f")
             ValueRow(label:"사라지기 (초)",value:$title.fadeOut,range:0...2,format:"%.1f")
             HStack {
-                Button("위") { title.y = 0.85 }; Button("가운데") { title.x = 0.5; title.y = 0.5 }; Button("아래") { title.y = 0.18 }
+                Button("위") { title.y = 0.85 }.help("타이틀을 화면 위쪽에 둡니다"); Button("가운데") { title.x = 0.5; title.y = 0.5 }; Button("아래") { title.y = 0.18 }.help("타이틀을 화면 아래쪽에 둡니다")
             }.buttonStyle(ActionStyle()).font(.system(size:9))
             HStack { Text("시작"); TimeField(title:"시작",value:$title.start) { v in store.editOverlayTime(id:title.id,kind:.titles,original:TimelineRange(start:title.start,end:title.end),delta:v-title.start,edge:-1) }; Text("끝"); TimeField(title:"끝",value:$title.end) { v in store.editOverlayTime(id:title.id,kind:.titles,original:TimelineRange(start:title.start,end:title.end),delta:v-title.end,edge:1) } }.frame(height:22).font(.system(size:10))
         }
@@ -218,7 +218,7 @@ struct DesignInspector: View {
                                 }
                                 Text(effect.rawValue).font(.system(size:10))
                             }.padding(8).background(maskDesign.wrappedValue.effect == effect ? Color.accent.opacity(0.12) : Color.raised.opacity(0.35),in:RoundedRectangle(cornerRadius:9)).overlay(RoundedRectangle(cornerRadius:9).stroke(maskDesign.wrappedValue.effect == effect ? Color.accent.opacity(0.6) : .clear,lineWidth:1))
-                        }.buttonStyle(.plain)
+                        }.buttonStyle(.hover)
                     }
                 }
             }
@@ -282,7 +282,7 @@ struct OutputInspector: View {
             Toggle("영상에 자막 입히기",isOn:$store.project.export.burnCaptions).font(.system(size:11))
             SliderRow(label:"자막 크기 (짧은 변 기준)",value:$store.project.export.captionSize,range:0.025...0.09)
             Divider()
-            Button { store.exportSheet = true } label: { Label("내보내기…",systemImage:"arrow.up.right") }.buttonStyle(ActionStyle(primary:true))
+            Button { store.exportSheet = true } label: { Label("내보내기…",systemImage:"arrow.up.right") }.help("편집 결과를 새 영상·사진 파일로 저장합니다 (⌘E)").buttonStyle(ActionStyle(primary:true))
         }
     }
 }
@@ -325,11 +325,11 @@ struct ExportSheet: View {
             let pending = store.project.media.filter { $0.isVisual && !$0.maskApplied && $0.faces.contains(where:\.selected) && store.project.usedVisualSources.contains($0.id) }
             if !pending.isEmpty {
                 Label("얼굴 마스킹을 아직 적용하지 않은 미디어가 \(pending.count)개 있습니다: \(pending.map(\.name).prefix(3).joined(separator:", "))",systemImage:"exclamationmark.triangle").foregroundStyle(.orange).font(.system(size:11))
-                Button("선택한 얼굴 모두 마스킹 적용") { for m in pending { if let i = store.project.media.firstIndex(where:{ $0.id == m.id }) { store.project.media[i].maskApplied = true } } }.buttonStyle(ActionStyle())
+                Button("선택한 얼굴 모두 마스킹 적용") { for m in pending { if let i = store.project.media.firstIndex(where:{ $0.id == m.id }) { store.project.media[i].maskApplied = true } } }.help("분석한 모든 미디어의 선택 인물에 마스킹을 적용합니다").buttonStyle(ActionStyle())
             }
             let unanalysed = store.project.media.filter { $0.isVisual && !$0.analysisComplete && store.project.usedVisualSources.contains($0.id) }
             if !unanalysed.isEmpty { Label("얼굴 분석을 하지 않은 미디어 \(unanalysed.count)개가 타임라인에 있습니다.",systemImage:"person.crop.rectangle.badge.questionmark").foregroundStyle(.orange).font(.system(size:11)) }
-            HStack { Text("얼굴 누락과 자막 내용을 최종 확인해 주세요.").font(.system(size:10)).foregroundStyle(Color.muted); Spacer(); Button("닫기") { dismiss() }.buttonStyle(ActionStyle()); Button(action:store.exportMedia) { Label("저장 위치 선택",systemImage:"arrow.up.right") }.buttonStyle(ActionStyle(primary:true)) }
+            HStack { Text("얼굴 누락과 자막 내용을 최종 확인해 주세요.").font(.system(size:10)).foregroundStyle(Color.muted); Spacer(); Button("닫기") { dismiss() }.buttonStyle(ActionStyle()); Button(action:store.exportMedia) { Label("저장 위치 선택",systemImage:"arrow.up.right") }.help("저장할 위치와 파일 이름을 고른 뒤 내보내기를 시작합니다").buttonStyle(ActionStyle(primary:true)) }
         }.padding(30).frame(width:680).background(Color.panel).foregroundStyle(Color.ink).tint(Color.accent)
     }
 }
@@ -350,7 +350,7 @@ struct HelpSheet: View {
                     item("개인정보","영상·음성은 서버로 전송하지 않습니다. 프로젝트와 자동 저장 파일에는 원본 경로·얼굴 썸네일·분석 좌표·자막이 들어 있으므로 작업 후 관리해 주세요. 출력 파일에는 원본 EXIF/GPS를 복사하지 않습니다.")
                 }.padding(.trailing,8)
             }
-            HStack { Text("Veil Studio 0.8 · 제작자 다있쌤 로디").font(.system(size:10)).foregroundStyle(Color.muted); Spacer(); Button("확인") { dismiss() }.buttonStyle(ActionStyle(primary:true)) }
+            HStack { Text("Veil Studio 0.8 · 제작자 다있쌤 로디").font(.system(size:10)).foregroundStyle(Color.muted); Spacer(); Button("확인") { dismiss() }.help("창을 닫습니다").buttonStyle(ActionStyle(primary:true)) }
         }.padding(28).frame(width:680,height:680).background(Color.panel).foregroundStyle(Color.ink)
     }
     func item(_ title: String,_ text: String) -> some View { VStack(alignment:.leading,spacing:7) { Text(title).font(.system(size:13,weight:.semibold)).foregroundStyle(Color.accent); Text(text).font(.system(size:12)).foregroundStyle(Color.muted).lineSpacing(4).fixedSize(horizontal:false,vertical:true) } }

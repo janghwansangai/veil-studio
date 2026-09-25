@@ -186,11 +186,11 @@ extension EditorStore {
     }
 
     // MARK: Faces
-    func runFaceAnalysis(_ source: MediaSource, token: Cancellation) async throws -> (FaceAnalyzer.Output,[TimelineRange]) {
+    func runFaceAnalysis(_ source: MediaSource, token: Cancellation, task: UUID) async throws -> (FaceAnalyzer.Output,[TimelineRange]) {
         let used = project.analysisRanges(for:source.id)
         let ranges = source.isImage ? [] : (used.isEmpty ? [TimelineRange(start:0,end:source.duration)] : used)
         let mode = analysisMode
-        let output = try await FaceAnalyzer.analyze(source:source,ranges:ranges,mode:mode,cancellation:token) { [weak self = self] value,message in Task { @MainActor in guard let self, !token.cancelled else { return }; self.progress = value; self.status = message } }
+        let output = try await FaceAnalyzer.analyze(source:source,ranges:ranges,mode:mode,cancellation:token) { [weak self = self] value,message in Task { @MainActor in self?.reportBackground(task,value,message) } }
         return (output,ranges)
     }
     func storeAnalysis(_ output: FaceAnalyzer.Output, ranges: [TimelineRange], source id: UUID) {
@@ -201,18 +201,22 @@ extension EditorStore {
         project = p; refreshFaceCoverage()
     }
     func analyze(_ id: UUID? = nil) {
-        guard loaded, !busy, let source = id.flatMap({ i in project.media.first { $0.id == i } }) ?? faceSource, source.isVisual else { return }
+        guard loaded, let source = id.flatMap({ i in project.media.first { $0.id == i } }) ?? faceSource, source.isVisual else { return }
+        guard !isAnalyzing(source.id) else { status = "\(source.name) 얼굴 분석이 이미 진행 중입니다"; return }
         do { try verifySource(source.id) } catch { self.error = error.localizedDescription; return }
-        begin("\(source.name) · 얼굴 분석 준비 중"); let token = cancellation
+        let task = startBackground(.faces,title:"얼굴 분석 · \(source.name)",source:source.id); let session = sessionID
+        status = "\(source.name) 얼굴 분석을 시작했습니다 · 분석하는 동안 계속 편집할 수 있습니다"
         Task {
             do {
-                let (output,ranges) = try await runFaceAnalysis(source,token:token)
-                storeAnalysis(output,ranges:ranges,source:source.id); selectedMedia = source.id
+                let (output,ranges) = try await runFaceAnalysis(source,token:task.token,task:task.id)
+                guard sessionID == session else { endBackground(task.id); return }
+                try task.token.check()
+                storeAnalysis(output,ranges:ranges,source:source.id); endBackground(task.id)
                 let persons = Set(output.tracks.map(\.groupID)).count
-                status = "인물 \(persons)명 발견 (추적 조각 \(output.tracks.count)개)" + (output.review.isEmpty ? "" : " · 검토 권장 구간 \(output.review.count)개") + " · 확인 후 마스킹 적용"
-                finish(); Log.info("face analysis: \(output.frames) frames, \(output.tracks.count) tracks, \(persons) persons")
-                if autoCaptions && !project.isImage && project.captions.isEmpty && source.hasAudio { transcribe() }
-            } catch { fail(error) }
+                status = "\(source.name) · 인물 \(persons)명 발견 (추적 조각 \(output.tracks.count)개)" + (output.review.isEmpty ? "" : " · 검토 권장 구간 \(output.review.count)개") + " · 확인 후 마스킹 적용"
+                Log.info("face analysis: \(output.frames) frames, \(output.tracks.count) tracks, \(persons) persons")
+                if autoCaptions && !project.isImage && project.captions.isEmpty && source.hasAudio && !speechRunning { transcribe() }
+            } catch { failBackground(task.id,error) }
         }
     }
     func applyMasks() {
@@ -284,56 +288,70 @@ extension EditorStore {
     }
     var speechSignature: String { "\(speechOptions.engine.rawValue)|\(speechOptions.whisperModelPath)|\(speechOptions.maxLineChars)|\(speechOptions.maxLines)|\(speechOptions.voiceDetection)|\(speechOptions.gain)|\(speechOptions.audioTrack)|\(speechOptions.hints)" }
     func transcribe(testOnly: Bool = false, force: Bool = false) {
-        guard loaded, !project.isImage, !busy else { return }
-        speechNotes = []
-        let locale = language, options = speechOptions
+        guard loaded, !project.isImage else { return }
+        guard !speechRunning else { status = "음성 인식이 이미 진행 중입니다"; return }
+        let locale = language, options = speechOptions, session = sessionID
         if testOnly {
             guard let entry = project.visibleTimeline.first(where:{ playhead >= $0.start && playhead < $0.end }), let source = project.source(entry.clip.source), entry.clip.freeze == nil else { status = "테스트할 영상 컷 안에 재생 헤드를 놓아 주세요."; return }
             do { try verifySource(source.id) } catch { self.error = error.localizedDescription; return }
             let start = entry.sourceTime(at:playhead), end = min(entry.clip.end,start+15)
             guard end > start+0.2 else { status = "시험할 구간이 너무 짧습니다"; return }
-            begin("시험 인식 준비 중"); let token = cancellation
+            speechNotes = []
+            let task = startBackground(.speechTest,title:"시험 인식 · \(source.name)",source:source.id)
             Task {
                 do {
-                    let report = try await Transcription.transcribe(source:source,ranges:[TimelineRange(start:start,end:end)],locale:locale,options:options,cancellation:token) { [weak self = self] v,s in Task { @MainActor in self?.progress = v; self?.status = s } }
+                    let report = try await Transcription.transcribe(source:source,ranges:[TimelineRange(start:start,end:end)],locale:locale,options:options,cancellation:task.token) { [weak self = self] v,s in Task { @MainActor in self?.reportBackground(task.id,v,s) } }
+                    endBackground(task.id); guard sessionID == session else { return }
                     speechNotes = report.warnings + report.captions.map { "\(timecode($0.start)) · \($0.text.replacingOccurrences(of:"\n",with:" "))" + (($0.confidence ?? 1) < SpeechOptions.reviewConfidence ? " · 확인 필요" : "") }
-                    status = "15초 이내 인식 테스트 완료 · 기존 자막은 유지됩니다"; finish()
-                } catch { fail(error) }
+                    status = "15초 이내 인식 테스트 완료 · 기존 자막은 유지됩니다"
+                } catch { failBackground(task.id,error) }
             }
             return
         }
         let jobs = speechJobs
         guard !jobs.isEmpty else { error = "소리가 있는 컷이 타임라인에 없습니다."; return }
         do { for (id,_) in jobs { try verifySource(id) } } catch { self.error = error.localizedDescription; return }
-        begin("자동 자막 준비 중"); let token = cancellation; let signature = speechSignature + "|\(locale)"
+        speechNotes = []
+        let task = startBackground(.speech,title:"자동 자막 · 미디어 \(jobs.count)개"); let token = task.token
+        let signature = speechSignature + "|\(locale)"; let before = project.captions
+        status = "자동 자막을 만들고 있습니다 · 그동안 계속 편집할 수 있습니다"
         Task {
             var results: [UUID:[Caption]] = [:]; var warnings: [String] = []; var failures: [String] = []
             for (n,(id,ranges)) in jobs.enumerated() {
-                guard !token.cancelled, let source = project.media.first(where:{ $0.id == id }) else { break }
+                guard !token.cancelled, sessionID == session, let source = project.media.first(where:{ $0.id == id }) else { break }
                 var cached = source.transcript?.engine == signature && !force ? source.transcript : nil
                 let missing = cached.map { TimelineRange.subtracting(ranges,$0.ranges) } ?? ranges
                 if !missing.isEmpty {
                     do {
                         let report = try await Transcription.transcribe(source:source,ranges:missing,locale:locale,options:options,cancellation:token) { [weak self = self] v,s in
-                            Task { @MainActor in guard let self, !token.cancelled else { return }; self.progress = (Double(n)+v)/Double(jobs.count); self.status = jobs.count > 1 ? "[\(n+1)/\(jobs.count)] " + s : s }
+                            Task { @MainActor in self?.reportBackground(task.id,(Double(n)+v)/Double(jobs.count),jobs.count > 1 ? "[\(n+1)/\(jobs.count)] " + s : s) }
                         }
                         warnings += report.warnings.map { "\(source.name) · \($0)" }
                         let kept = (cached?.captions ?? []).filter { c in !missing.contains { $0.contains(c.start) } }
                         cached = SourceTranscript(engine:signature,language:locale,ranges:TimelineRange.merged((cached?.ranges ?? [])+missing),captions:(kept+report.captions).sorted { $0.start < $1.start })
-                        if let i = project.media.firstIndex(where:{ $0.id == id }) { restoring = true; project.media[i].transcript = cached; restoring = false }
-                    } catch is CancellationError { fail(CancellationError()); return }
+                        if sessionID == session, let i = project.media.firstIndex(where:{ $0.id == id }) { restoring = true; project.media[i].transcript = cached; restoring = false }
+                    } catch is CancellationError { failBackground(task.id,CancellationError()); return }
                     catch { failures.append("\(source.name): \(error.localizedDescription)"); continue }
                 }
                 results[id] = cached?.captions ?? []
             }
-            if token.cancelled { fail(CancellationError()); return }
+            guard sessionID == session else { endBackground(task.id); return }
+            if token.cancelled { failBackground(task.id,CancellationError()); return }
             let captions = project.timelineCaptions(from:results)
-            guard !captions.isEmpty else { fail(StudioError.message(failures.isEmpty ? "인식된 대사가 없습니다. 기존 자막은 유지했습니다." : failures.joined(separator:"\n"))); return }
-            var p = project; p.captions = captions; p.separateOverlappingOverlays(); project = p
-            speechNotes = failures + warnings
+            guard !captions.isEmpty else { failBackground(task.id,StudioError.message(failures.isEmpty ? "인식된 대사가 없습니다. 기존 자막은 유지했습니다." : failures.joined(separator:"\n"))); return }
+            var p = project; var note = ""
+            if p.captions == before || p.captions.isEmpty { p.captions = captions }
+            else {
+                // Captions were edited meanwhile: keep them and add the new ones on a fresh lane.
+                let lane = max(p.captionLaneCount ?? 1,(p.captions.map { $0.lane ?? 0 }.max() ?? 0)+1)
+                p.captions += captions.map { var c = $0; c.lane = lane; return c }
+                p.captionLaneCount = lane+1; note = " · 편집 중이던 자막은 그대로 두고 새 자막을 ‘자막 \(lane+1)’ 트랙에 넣었습니다"
+            }
+            p.separateOverlappingOverlays(); project = p
+            speechNotes = failures + warnings; endBackground(task.id)
             let review = captions.filter { ($0.confidence ?? 1) < SpeechOptions.reviewConfidence }.count
-            status = "자막 \(captions.count)개 생성" + (review > 0 ? " · 확인이 필요한 문장 \(review)개" : "") + (failures.isEmpty ? "" : " · 실패한 미디어 \(failures.count)개") + " · 내용을 검토하세요"
-            tab = .captions; finish(); Log.info("transcribed \(jobs.count) sources, \(captions.count) captions")
+            status = "자막 \(captions.count)개 생성" + (review > 0 ? " · 확인이 필요한 문장 \(review)개" : "") + (failures.isEmpty ? "" : " · 실패한 미디어 \(failures.count)개") + note
+            Log.info("transcribed \(jobs.count) sources, \(captions.count) captions")
         }
     }
     func importSRT() {
@@ -356,11 +374,13 @@ extension EditorStore {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let target = url.standardizedFileURL.resolvingSymlinksInPath().path
         guard !project.media.contains(where:{ URL(fileURLWithPath:$0.path).standardizedFileURL.resolvingSymlinksInPath().path == target }) else { error = "원본을 보호하기 위해 다른 파일 이름으로 저장해 주세요."; return }
-        exportSheet = false; begin("내보내기 준비 중"); let p = project; let token = cancellation
+        exportSheet = false; let p = project
+        let task = startBackground(.export,title:"내보내기 · \(url.lastPathComponent)")
+        status = "내보내기를 시작했습니다 · 내보내는 동안 계속 편집할 수 있습니다 (현재 상태 기준으로 저장)"
         Task { do {
-            try await MediaEngine.export(p,to:url,cancellation:token) { [weak self = self] v,s in Task { @MainActor in self?.progress = v; self?.status = s } }
-            lastExport = url; status = "내보내기 완료 · \(url.lastPathComponent)"; finish(); Log.info("exported \(url.lastPathComponent)")
-        } catch { fail(error) } }
+            try await MediaEngine.export(p,to:url,cancellation:task.token) { [weak self = self] v,s in Task { @MainActor in self?.reportBackground(task.id,v,s) } }
+            endBackground(task.id); lastExport = url; status = "내보내기 완료 · \(url.lastPathComponent)"; Log.info("exported \(url.lastPathComponent)")
+        } catch { failBackground(task.id,error) } }
     }
 
     // MARK: Waveforms (per source, only the used ranges)

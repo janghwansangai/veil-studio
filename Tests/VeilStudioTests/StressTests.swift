@@ -95,3 +95,34 @@ extension EditorTests {
         print(String(format:"Long timeline: 1500 cuts, 2000 captions, 108k face samples · %.2fs · project %.1f MB",elapsed,Double(data.count)/1_000_000))
     }
 }
+
+extension EditorTests {
+    // Analysis and speech run in the background: editing continues and results land afterwards.
+    @MainActor func testBackgroundAnalysisWhileEditing() async throws {
+        _ = NSApplication.shared
+        let dir = try tempFolder(); defer { try? FileManager.default.removeItem(at:dir) }
+        let a = dir.appendingPathComponent("a.mov"); try await makeVideo(a)
+        let store = EditorStore(); store.automaticRecoveryEnabled = false; store.autoCaptions = false
+        store.addMedia([a],newProject:true)
+        for _ in 0..<200 { if !store.busy && store.loaded { break }; try await Task.sleep(nanoseconds:20_000_000) }
+        store.analysisMode = .fast
+        store.analyze()
+        XCTAssertFalse(store.busy); XCTAssertEqual(store.backgroundTasks.count,1); XCTAssertTrue(store.canEditTimeline)
+        XCTAssertTrue(store.isAnalyzing(store.project.media[0].id))
+        store.analyze(); XCTAssertEqual(store.backgroundTasks.count,1)          // no duplicate run
+        store.seek(1); store.split(); store.addTitle(text:"편집 중"); store.addMarker()   // editing continues
+        for _ in 0..<500 { if store.backgroundTasks.isEmpty { break }; try await Task.sleep(nanoseconds:20_000_000) }
+        XCTAssertTrue(store.backgroundTasks.isEmpty)
+        XCTAssertTrue(store.project.media[0].analysisComplete)
+        XCTAssertEqual(store.project.clips.count,2); XCTAssertEqual(store.project.titles.count,1); XCTAssertEqual(store.project.markers.count,1)
+        // Cancelling keeps the previous result; opening another project cancels running work.
+        store.analyze(); let id = store.backgroundTasks[0].id; store.cancelBackground(id)
+        for _ in 0..<300 { if store.backgroundTasks.isEmpty { break }; try await Task.sleep(nanoseconds:20_000_000) }
+        XCTAssertTrue(store.backgroundTasks.isEmpty); XCTAssertTrue(store.project.media[0].analysisComplete)
+        store.analyze(); store.setProject(store.project)
+        XCTAssertTrue(store.backgroundTasks.isEmpty)
+        try await Task.sleep(nanoseconds:500_000_000)
+        XCTAssertTrue(store.backgroundTasks.isEmpty)
+        store.pause()
+    }
+}

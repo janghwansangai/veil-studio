@@ -6,7 +6,7 @@ sdk_path="${VEIL_SDK_PATH:-$(xcrun --show-sdk-path)}"
 if [[ -d /Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk && -z "${VEIL_SDK_PATH:-}" ]]; then
     sdk_path=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk
 fi
-core=(Models Timeline Rendering Compositor FaceAnalysis MediaEngine AudioWaveform SpeechSupport Transcription WhisperTranscription AnalyzerTranscription Diagnostics Thumbnails TimelineViewport EditorStore EditorStore+Edit EditorStore+Media BatchQueue)
+core=(Models Timeline Rendering Compositor FaceAnalysis MediaEngine AudioWaveform SpeechSupport Transcription WhisperTranscription AnalyzerTranscription Diagnostics Thumbnails TimelineViewport BackgroundTasks EditorStore EditorStore+Edit EditorStore+Media BatchQueue)
 files=()
 for name in "${core[@]}"; do files+=("Sources/VeilStudio/$name.swift"); done
 swiftc -swift-version 5 -D VEIL_STANDALONE_TESTS -parse-as-library \

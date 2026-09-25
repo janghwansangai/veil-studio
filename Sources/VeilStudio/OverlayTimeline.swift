@@ -40,7 +40,7 @@ struct OverlayTimelineBlock: View {
                     if item.warning { Image(systemName:"exclamationmark.circle.fill").foregroundStyle(.yellow) }
                     Text(item.title).lineLimit(1)
                 }.font(.system(size:8)).frame(maxWidth:.infinity,maxHeight:.infinity).contentShape(Rectangle())
-                    .onHover { inside in if inside { NSCursor.openHand.push() } else { NSCursor.pop() } }
+                    .hoverCursor(store.tool == .blade ? Cursors.blade : .openHand)
                     .gesture(SpatialTapGesture().onEnded { v in
                         if store.tool == .blade { store.blade(at:item.start+(v.location.x+8)/viewport.pixelsPerSecond,row:row) } else { select() }
                     })
@@ -72,7 +72,7 @@ struct OverlayTimelineBlock: View {
         }
     }
     func handle(_ edge: Int) -> some View {
-        Rectangle().fill(Color.white.opacity(0.8)).frame(width:6).contentShape(Rectangle()).onHover { inside in if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() } }.highPriorityGesture(gesture(edge))
+        Rectangle().fill(Color.white.opacity(store.tool == .blade ? 0.2 : 0.8)).frame(width:6).contentShape(Rectangle()).hoverCursor(store.tool == .blade ? Cursors.blade : .resizeLeftRight).highPriorityGesture(gesture(edge))
     }
     func gesture(_ edge: Int) -> some Gesture {
         DragGesture(minimumDistance:1,coordinateSpace:.global).onChanged { value in

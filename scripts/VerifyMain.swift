@@ -67,7 +67,8 @@ func XCTAssertNoThrow<T>(_ body: @autoclosure () throws -> T,file: StaticString 
             ("v0.8 multi-source store / batch queue", { try await suite.testMultiSourceStoreAndBatchQueue() }),
             ("v0.8 Korean speech accuracy with noise", { try await suite.testKoreanSpeechAccuracyWithNoise() }),
             ("v0.8 700 random edits stay valid", { try await suite.testRandomEditingStaysValid() }),
-            ("v0.8 long timeline performance", { try suite.testLongTimelinePerformance() })
+            ("v0.8 long timeline performance", { try suite.testLongTimelinePerformance() }),
+            ("v0.8.1 background analysis while editing", { try await suite.testBackgroundAnalysisWhileEditing() })
         ]
         for (name,run) in tests {
             let start = Date(); let before = failures

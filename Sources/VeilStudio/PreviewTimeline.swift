@@ -100,8 +100,8 @@ struct PreviewPane: View {
             }.padding(.bottom,6)
             VStack(spacing:10) { Text("기억은 선명하게,\n얼굴은 안전하게.").font(.system(size:28,weight:.semibold)).tracking(-1).multilineTextAlignment(.center); Text("영상·사진·오디오를 여러 개 한꺼번에 이곳에 놓아주세요.").font(.system(size:12)).foregroundStyle(Color.muted) }
             HStack(spacing:10) {
-                Button(action:store.openMedia) { Label("미디어로 새 프로젝트",systemImage:"plus") }.buttonStyle(ActionStyle(primary:true))
-                Button { store.openProject() } label: { Label("프로젝트 열기",systemImage:"square.stack") }.buttonStyle(ActionStyle())
+                Button(action:store.openMedia) { Label("미디어로 새 프로젝트",systemImage:"plus") }.help("파일을 골라 새 프로젝트를 만듭니다. 여러 개를 고르면 이어 붙입니다 (⌘O)").buttonStyle(ActionStyle(primary:true))
+                Button { store.openProject() } label: { Label("프로젝트 열기",systemImage:"square.stack") }.help("저장한 .veilproject 파일을 엽니다 (⇧⌘O)").buttonStyle(ActionStyle())
             }
             Text("MOV · MP4 · M4V · JPEG · PNG · HEIC · M4A · WAV · MP3\n여러 파일을 고르면 순서대로 이어 붙이고, 폴더도 가져올 수 있습니다").font(.system(size:10)).foregroundStyle(Color.muted).lineSpacing(5).multilineTextAlignment(.center)
             HStack(spacing:24) {
@@ -125,9 +125,9 @@ struct RegionTransformOverlay: View {
         let box = rect.scaled(to:size)
         Rectangle().fill(Color.accent.opacity(0.08))
             .overlay(Rectangle().strokeBorder(Color.accent,lineWidth:2))
-            .contentShape(Rectangle()).onHover { inside in if inside { NSCursor.openHand.push() } else { NSCursor.pop() } }.gesture(drag(resize:false))
+            .contentShape(Rectangle()).hoverCursor(.openHand).gesture(drag(resize:false))
             .overlay(alignment:.bottomTrailing) {
-                Rectangle().fill(Color.white).frame(width:12,height:12).contentShape(Rectangle()).onHover { inside in if inside { NSCursor.crosshair.push() } else { NSCursor.pop() } }.gesture(drag(resize:true))
+                Rectangle().fill(Color.white).frame(width:12,height:12).contentShape(Rectangle()).hoverCursor(.crosshair).gesture(drag(resize:true))
             }
             .frame(width:box.width,height:box.height).position(x:box.midX,y:size.height-box.midY)
             .help("드래그: 영역 이동 · 오른쪽 아래 손잡이: 크기 조절 · 키프레임이 있으면 현재 위치에 기록")
@@ -161,7 +161,7 @@ struct TitleMoveOverlay: View {
         let w = min(size.width*0.92,max(font*2,Double(title.text.split(separator:"\n").map(\.count).max() ?? 1)*font*0.9)), h = font*1.4*Double(max(1,title.text.split(separator:"\n").count))
         Rectangle().strokeBorder(Color.pink,style:StrokeStyle(lineWidth:1.5,dash:[4,3])).background(Color.pink.opacity(0.06))
             .frame(width:w,height:h).position(x:size.width*title.x,y:size.height*(1-title.y))
-            .contentShape(Rectangle()).onHover { inside in if inside { NSCursor.openHand.push() } else { NSCursor.pop() } }
+            .contentShape(Rectangle()).hoverCursor(.openHand)
             .gesture(DragGesture(minimumDistance:1,coordinateSpace:.global).onChanged { v in
                 if origin == nil { origin = CGPoint(x:title.x,y:title.y); store.beginTimelineGesture() }
                 guard let origin, let i = store.project.titles.firstIndex(where:{ $0.id == title.id }) else { return }
