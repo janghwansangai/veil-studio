@@ -15,6 +15,9 @@ func XCTAssertNil<T>(_ a: T?,file: StaticString = #filePath,line: UInt = #line) 
 func XCTAssertNotNil<T>(_ a: T?,file: StaticString = #filePath,line: UInt = #line) { record(a != nil,"Expected value",file:file,line:line) }
 func XCTAssertGreaterThan<T: Comparable>(_ a: T,_ b: T,file: StaticString = #filePath,line: UInt = #line) { record(a > b,"\(a) is not > \(b)",file:file,line:line) }
 func XCTAssertLessThan<T: Comparable>(_ a: T,_ b: T,file: StaticString = #filePath,line: UInt = #line) { record(a < b,"\(a) is not < \(b)",file:file,line:line) }
+func XCTAssertNotEqual<T: Equatable>(_ a: T,_ b: T,file: StaticString = #filePath,line: UInt = #line) { record(a != b,"\(a) == \(b)",file:file,line:line) }
+func XCTAssertLessThanOrEqual<T: Comparable>(_ a: T,_ b: T,file: StaticString = #filePath,line: UInt = #line) { record(a <= b,"\(a) is not <= \(b)",file:file,line:line) }
+func XCTAssertGreaterThanOrEqual<T: Comparable>(_ a: T,_ b: T,file: StaticString = #filePath,line: UInt = #line) { record(a >= b,"\(a) is not >= \(b)",file:file,line:line) }
 func XCTFail(_ message: String,file: StaticString = #filePath,line: UInt = #line) { record(false,message,file:file,line:line) }
 func XCTAssertThrowsError<T>(_ body: @autoclosure () throws -> T,file: StaticString = #filePath,line: UInt = #line) { do { _ = try body(); record(false,"Expected error",file:file,line:line) } catch { record(true,"",file:file,line:line) } }
 func XCTAssertNoThrow<T>(_ body: @autoclosure () throws -> T,file: StaticString = #filePath,line: UInt = #line) { do { _ = try body(); record(true,"",file:file,line:line) } catch { record(false,error.localizedDescription,file:file,line:line) } }
@@ -53,7 +56,16 @@ func XCTAssertNoThrow<T>(_ body: @autoclosure () throws -> T,file: StaticString 
             ("Overlay lanes / retained analysis ranges", { try suite.testOverlayLanesAndAnalysisRanges() }),
             ("Layered video / gaps MP4", { try await suite.testLayeredVideoExport() }),
             ("Independent overlay tracks / migration / split", { try await suite.testIndependentOverlayTracks() }),
-            ("Editor commands / composed preview / undo", { try await suite.testEditorCommandsAndComposedPreview() })
+            ("Editor commands / composed preview / undo", { try await suite.testEditorCommandsAndComposedPreview() }),
+            ("v0.8 rotated video matches system player", { try await suite.testOrientationMatchesSystemPlayer() }),
+            ("v0.8 multi-source / speed / freeze / dissolve / PiP / colour / title", { try await suite.testMultiSourceSpeedFreezeTransitionAndLayers() }),
+            ("v0.8 independent audio / volume / music tail", { try await suite.testIndependentAudioAndVolume() }),
+            ("v0.8 timeline speed / transition editing", { try suite.testTimelineSpeedTransitionEditing() }),
+            ("v0.8 project v2 coding / v1 migration / saved projects", { try suite.testProjectV2CodingAndLegacyMigration() }),
+            ("v0.8 face matching / grouping / gap bridging", { suite.testFaceAssociationGroupingAndBridging() }),
+            ("v0.8 caption segmenter / timeline mapping", { suite.testCaptionSegmenterAndTimelineMapping() }),
+            ("v0.8 multi-source store / batch queue", { try await suite.testMultiSourceStoreAndBatchQueue() }),
+            ("v0.8 Korean speech accuracy with noise", { try await suite.testKoreanSpeechAccuracyWithNoise() })
         ]
         for (name,run) in tests {
             let start = Date(); let before = failures

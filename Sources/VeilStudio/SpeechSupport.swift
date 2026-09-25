@@ -109,14 +109,28 @@ enum CaptionSegmenter {
         let capacity = o.maxLineChars*o.maxLines
         var groups: [[RecognizedWord]] = []; var current: [RecognizedWord] = []
         func length(_ ws: [RecognizedWord]) -> Int { joined(ws).count }
+        func endsSentence(_ w: RecognizedWord) -> Bool { w.text.trimmingCharacters(in:.whitespaces).last.map { ".?!…。？！".contains($0) } ?? false }
+        // Best place to cut a group that grew too long: after punctuation or a pause, near the middle.
+        func bestSplit(_ ws: [RecognizedWord]) -> Int {
+            guard ws.count > 1 else { return ws.count }
+            var best = ws.count-1, bestScore = -Double.infinity
+            for i in 1..<ws.count {
+                let last = ws[i-1].text.trimmingCharacters(in:.whitespaces).last
+                var score = -abs(Double(i)-Double(ws.count)/2)/Double(ws.count)
+                if let last, ".?!…。？！".contains(last) { score += 3 } else if let last, ",，、".contains(last) { score += 2 }
+                score += min(2,max(0,ws[i].start-ws[i-1].end)*4)
+                if score > bestScore { bestScore = score; best = i }
+            }
+            return best
+        }
         for w in words {
-            if let last = current.last, let first = current.first {
+            if let last = current.last {
                 let pause = w.start-last.end
-                let sentenceEnd = last.text.trimmingCharacters(in:.whitespaces).last.map { ".?!…。？！".contains($0) } ?? false
-                let tooLong = length(current+[w]) > capacity
-                let tooSlow = w.end-first.start > o.maxDuration
-                let softBreak = sentenceEnd && length(current) >= max(6,capacity/4)
-                if pause > 0.7 || tooLong || tooSlow || softBreak || (sentenceEnd && pause > 0.25) { groups.append(current); current = [] }
+                if pause > 0.7 || (endsSentence(last) && (pause > 0.25 || length(current) >= max(6,capacity/4))) { groups.append(current); current = [] }
+            }
+            while let first = current.first, length(current+[w]) > capacity || w.end-first.start > o.maxDuration {
+                let k = bestSplit(current)
+                groups.append(Array(current[..<k])); current = Array(current[k...])
             }
             current.append(w)
         }
