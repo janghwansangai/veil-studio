@@ -1,0 +1,6 @@
+.build/
+.DS_Store
+output/
+*.veilproject
+Resources/Speech/*.bin
+Resources/Speech/whisper-cli

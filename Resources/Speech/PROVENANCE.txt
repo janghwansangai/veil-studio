@@ -1,0 +1,8 @@
+whisper.cpp v1.8.2
+https://github.com/ggml-org/whisper.cpp
+Commit: 4979e04f5dcaccb36057e059bbaed8a2f5288315
+Build: static libraries, embedded Metal source, macOS 14 target, 4 CPU threads maximum per inference.
+Model: multilingual ggml-base.bin
+https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin
+SHA256: 60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe
+Model architecture and weights: https://github.com/openai/whisper (MIT license)
