@@ -33,9 +33,9 @@ struct AudioWaveform {
                     try cancellation.check()
                     try autoreleasepool {
                         let n = CMSampleBufferGetNumSamples(sample)
-                        guard n > 0, let block = CMSampleBufferGetDataBuffer(sample) else { return }
+                        guard n > 0, let block = CMSampleBufferGetDataBuffer(sample), CMBlockBufferGetDataLength(block) >= n*MemoryLayout<Float>.size else { return }
                         var values = [Float](repeating:0,count:n)
-                        let result = values.withUnsafeMutableBytes { raw in CMBlockBufferCopyDataBytes(block,atOffset:0,dataLength:n*MemoryLayout<Float>.size,destination:raw.baseAddress!) }
+                        let result = values.withUnsafeMutableBytes { raw in raw.baseAddress.map { CMBlockBufferCopyDataBytes(block,atOffset:0,dataLength:n*MemoryLayout<Float>.size,destination:$0) } ?? kCMBlockBufferBadPointerParameterErr }
                         guard result == kCMBlockBufferNoErr else { throw StudioError.message("파형 샘플 읽기 실패") }
                         let start = CMSampleBufferGetPresentationTimeStamp(sample).seconds
                         guard start.isFinite else { return }

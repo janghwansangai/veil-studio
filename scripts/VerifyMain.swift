@@ -65,7 +65,9 @@ func XCTAssertNoThrow<T>(_ body: @autoclosure () throws -> T,file: StaticString 
             ("v0.8 face matching / grouping / gap bridging", { suite.testFaceAssociationGroupingAndBridging() }),
             ("v0.8 caption segmenter / timeline mapping", { suite.testCaptionSegmenterAndTimelineMapping() }),
             ("v0.8 multi-source store / batch queue", { try await suite.testMultiSourceStoreAndBatchQueue() }),
-            ("v0.8 Korean speech accuracy with noise", { try await suite.testKoreanSpeechAccuracyWithNoise() })
+            ("v0.8 Korean speech accuracy with noise", { try await suite.testKoreanSpeechAccuracyWithNoise() }),
+            ("v0.8 700 random edits stay valid", { try await suite.testRandomEditingStaysValid() }),
+            ("v0.8 long timeline performance", { try suite.testLongTimelinePerformance() })
         ]
         for (name,run) in tests {
             let start = Date(); let before = failures

@@ -74,7 +74,7 @@ enum InspectorTab: String, CaseIterable { case clip = "클립", mask = "마스�
     @Published var autoCaptions = true
     @Published var speechOptions = SpeechOptions.load() { didSet { if speechOptions != oldValue { speechOptions.save() } } }
     @Published var language = UserDefaults.standard.string(forKey:"speechLanguage") ?? "ko-KR" { didSet { UserDefaults.standard.set(language,forKey:"speechLanguage") } }
-    @Published var analysisMode = FaceAnalysisMode(rawValue:UserDefaults.standard.string(forKey:"faceAnalysisMode") ?? "") ?? .standard { didSet { UserDefaults.standard.set(analysisMode.rawValue,forKey:"faceAnalysisMode") } }
+    @Published var analysisMode = FaceAnalysisMode(rawValue:UserDefaults.standard.string(forKey:"faceAnalysisMode") ?? "") ?? .precise { didSet { UserDefaults.standard.set(analysisMode.rawValue,forKey:"faceAnalysisMode") } }
     @Published var speechNotes: [String] = []
     @Published var lastExport: URL?
     @Published var projectURL: URL?
@@ -84,6 +84,7 @@ enum InspectorTab: String, CaseIterable { case clip = "클립", mask = "마스�
     @Published var queueCurrent: UUID?
     @Published var thumbnailRevision = 0
     let thumbnails = ThumbnailCache()
+    let viewport = TimelineViewport()
     var automaticRecoveryEnabled = true
     var cancellation = Cancellation()
     var restoring = false
@@ -383,6 +384,10 @@ enum InspectorTab: String, CaseIterable { case clip = "클립", mask = "마스�
 
     // MARK: Project files
     func saveProject() { _ = saveProjectIfPossible() }
+    func saveProjectAs() {
+        let previous = projectURL; projectURL = nil
+        if !saveProjectIfPossible() { projectURL = previous }
+    }
     func saveProjectIfPossible() -> Bool {
         focusTimeline(); endTimelineGesture()
         guard loaded, !busy else { return false }

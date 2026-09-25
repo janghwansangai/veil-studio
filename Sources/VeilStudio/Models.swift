@@ -176,9 +176,9 @@ enum FaceAnalysisMode: String, Codable, CaseIterable {
     case fast = "빠름", standard = "표준", precise = "정밀 · 작은 얼굴"
     var detail: String {
         switch self {
-        case .fast: return "2프레임마다 검출 · 추적으로 보완"
-        case .standard: return "모든 프레임 · 긴 변 1280px"
-        case .precise: return "모든 프레임 · 1920px + 분할 검출 · 느림"
+        case .fast: return "2프레임마다 검출하고 사이는 추적으로 보완 · 가장 빠름 · 큰 얼굴 위주"
+        case .standard: return "모든 프레임 검출 · 가까운 얼굴 위주 · 실시간의 약 5배 속도"
+        case .precise: return "모든 프레임 + 화면 4분할 정밀 검출 · 멀리 있는 작은 얼굴까지 · 실시간의 약 2배 속도 (권장)"
         }
     }
 }
@@ -227,7 +227,7 @@ struct BatchJob: Identifiable, Codable, Equatable {
     var message = ""; var output: String?; var progress = 0.0
 }
 struct BatchSettings: Codable, Equatable {
-    var folder = ""; var suffix = "_마스킹"; var analysis: FaceAnalysisMode = .standard
+    var folder = ""; var suffix = "_마스킹"; var analysis: FaceAnalysisMode = .precise
     var videoFormat: VideoOutput = .mp4; var hevc = false; var resolution: OutputResolution = .original
 }
 

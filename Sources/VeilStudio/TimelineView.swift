@@ -1,215 +1,537 @@
 import SwiftUI
 
+func rowHeight(_ kind: EditTrack) -> Double {
+    switch kind { case .video: return 46; case .audio: return 26; case .faces: return 12; case .music: return 30; default: return 24 }
+}
+let rowSpacing = 3.0
+let timelineLabelWidth = 118.0
+
 struct TimelineView: View {
     @EnvironmentObject var store: EditorStore
+    @ObservedObject var viewport: TimelineViewport
     var body: some View {
         VStack(spacing:0) {
-            HStack(spacing:14) {
-                Label(store.selectedTrack.rawValue,systemImage:"slider.horizontal.below.rectangle").font(.system(size:11,weight:.semibold))
-                Button(action:store.undo) { Image(systemName:"arrow.uturn.backward") }.disabled(store.undoStack.isEmpty)
-                Button(action:store.redo) { Image(systemName:"arrow.uturn.forward") }.disabled(store.redoStack.isEmpty)
-                Divider().frame(height:14)
-                Button(action:store.split) { Label("분할",systemImage:"scissors") }.help("재생 위치에서 분할 ⌘B").disabled(!store.canEditTimeline)
-                Button { store.editSelection("cut") } label: { Image(systemName:"scissors.badge.ellipsis") }.help("선택 컷 잘라내기 ⌘X").disabled(!store.selectionAvailable)
-                Button { store.editSelection("copy") } label: { Image(systemName:"doc.on.doc") }.help("선택 컷 복사 ⌘C").disabled(!store.selectionAvailable)
-                Button { store.editSelection("paste") } label: { Image(systemName:"doc.on.clipboard") }.help("재생 위치에 붙여넣기 ⌘V").disabled(!store.canEditTimeline || !store.pasteAvailable)
-                Button { store.editSelection("delete") } label: { Image(systemName:"trash") }.help("선택 컷 삭제 후 붙이기 Delete").disabled(!store.selectionAvailable)
-                Button { store.moveSelected(-1) } label: { Image(systemName:"arrow.left.to.line") }.help("선택 컷 앞으로 이동").disabled(!store.selectionAvailable)
-                Button { store.moveSelected(1) } label: { Image(systemName:"arrow.right.to.line") }.help("선택 컷 뒤로 이동").disabled(!store.selectionAvailable)
-                Spacer(minLength:8)
-                if let clip = store.project.clips.first(where:{$0.id == store.selectedClip}) {
-                    Text("원본 구간").foregroundStyle(Color.muted)
-                    TextField("원본 시작",value:Binding(get:{clip.start},set:{store.trimClip(clip.id,start:$0)}),format:.number.precision(.fractionLength(2))).frame(width:64)
-                    Text("–")
-                    TextField("원본 끝",value:Binding(get:{clip.end},set:{store.trimClip(clip.id,end:$0)}),format:.number.precision(.fractionLength(2))).frame(width:64)
-                }
-                Text("편집 후 \(timecode(store.project.editedDuration))").foregroundStyle(Color.muted)
-            }.font(.system(size:10)).frame(height:36)
-            HStack(spacing:10) {
-                Label("내보내기 구간",systemImage:"inset.filled.rectangle").foregroundStyle(Color.mint)
-                Button("시작 I",action:store.markIn)
-                Button("끝 O",action:store.markOut)
-                TextField("내보내기 시작",value:Binding(get:{store.project.exportRange?.start ?? 0},set:{store.setExportRange(start:$0,end:store.project.exportRange?.end ?? store.project.editedDuration)}),format:.number.precision(.fractionLength(2))).frame(width:65)
-                Text("–")
-                TextField("내보내기 끝",value:Binding(get:{store.project.exportRange?.end ?? store.project.editedDuration},set:{store.setExportRange(start:store.project.exportRange?.start ?? 0,end:$0)}),format:.number.precision(.fractionLength(2))).frame(width:65)
-                Text("초").foregroundStyle(Color.muted)
-                Button("선택 컷 범위",action:store.exportSelectedClips).disabled(!store.selectionAvailable)
-                Button("범위 해제") { store.project.exportRange = nil }.disabled(store.project.exportRange == nil)
-                Button("범위 삭제",action:store.deleteMarkedRange).disabled(store.project.exportRange == nil)
-                Spacer(minLength:4)
-                Text("\(store.project.exportRange == nil ? "전체" : "지정 구간") · \(timecode(store.project.exportDuration))").foregroundStyle(Color.mint)
-            }.font(.system(size:10)).frame(height:34).disabled(!store.canEditTimeline || store.project.clips.isEmpty)
-            HStack {
-                Menu("트랙 추가") {
-                    Button("영상 트랙") { store.addLane(.video) }
-                    Button("영역 마스크 트랙") { store.addLane(.regions) }
-                    Button("자막 트랙") { store.addLane(.captions) }
-                }
-                Button("겹친 항목 분리") { store.project.separateOverlappingOverlays() }
-                Text("블록 우클릭 → 트랙 이동 · 위쪽 트랙이 앞에 표시됩니다").foregroundStyle(Color.muted)
-                Spacer()
-            }.font(.system(size:10)).frame(height:25)
-            GeometryReader { geometry in
-                let timelineWidth = max(1,geometry.size.width-133)
+            toolbar
+            rangeBar
+            GeometryReader { geo in
+                let trackWidth = max(100,geo.size.width-timelineLabelWidth-6)
+                let rows = store.timelineRows
+                let totalHeight = rows.reduce(0) { $0+rowHeight($1.kind)+rowSpacing }
                 VStack(alignment:.leading,spacing:4) {
-                    HStack(spacing:12) {
-                        Text("편집 시간").font(.system(size:9)).frame(width:105,alignment:.leading)
-                        TimelineRuler().frame(width:timelineWidth,height:44)
+                    HStack(spacing:6) {
+                        Text("편집 시간").font(.system(size:9)).foregroundStyle(Color.muted).frame(width:timelineLabelWidth,alignment:.leading)
+                        TimelineRuler(viewport:viewport).frame(width:trackWidth,height:44).clipped()
                     }
                     ScrollView(.vertical) {
-                        HStack(alignment:.top,spacing:12) {
-                            VStack(alignment:.leading,spacing:0) {
-                                ForEach(store.timelineRows) { row in
-                                    Button(row.title) { store.selectLane(row.kind,lane:row.lane) }
-                                        .foregroundStyle((store.selectedTrack == row.kind || store.selectedTrack.linkedToVideo && row.kind.linkedToVideo) && store.selectedLane == row.lane ? Color.accent : Color.muted)
-                                        .frame(height:31)
+                        HStack(alignment:.top,spacing:6) {
+                            VStack(alignment:.leading,spacing:rowSpacing) {
+                                ForEach(rows) { row in
+                                    Button { store.selectLane(row.kind,lane:row.lane) } label: {
+                                        HStack(spacing:4) {
+                                            Image(systemName:icon(row.kind)).font(.system(size:8))
+                                            Text(row.title).lineLimit(1)
+                                        }.frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.leading).contentShape(Rectangle())
+                                    }
+                                    .foregroundStyle(highlighted(row) ? Color.accent : Color.muted)
+                                    .frame(width:timelineLabelWidth,height:rowHeight(row.kind),alignment:.leading)
                                 }
-                            }.font(.system(size:9)).frame(width:105,alignment:.leading)
-                            TimelineLanes().frame(width:timelineWidth,height:Double(store.timelineRows.count)*31)
+                            }.font(.system(size:9))
+                            TimelineLanes(viewport:viewport,rows:rows).frame(width:trackWidth,height:totalHeight)
+                                .background(TimelineScrollMonitor(viewport:viewport))
                         }.frame(maxWidth:.infinity,alignment:.leading)
                     }.scrollIndicators(.visible)
-                }.frame(maxWidth:.infinity,alignment:.leading)
-                    .overlay(alignment:.topLeading) {
-                        Rectangle().fill(Color.white).frame(width:1).offset(x:117+timelineWidth*store.playhead/max(0.01,store.project.editedDuration)).allowsHitTesting(false)
+                    HStack(spacing:6) {
+                        Color.clear.frame(width:timelineLabelWidth,height:10)
+                        TimelineScrollBar(viewport:viewport).frame(width:trackWidth,height:10)
                     }
+                }
+                .overlay(alignment:.topLeading) {
+                    let x = viewport.x(store.playhead)
+                    if x >= -1, x <= trackWidth+1 {
+                        Rectangle().fill(Color.white).frame(width:1).offset(x:timelineLabelWidth+6+x).allowsHitTesting(false)
+                        Triangle().fill(Color.white).frame(width:11,height:8).offset(x:timelineLabelWidth+6+x-5.5).allowsHitTesting(false)
+                    }
+                }
+                .onAppear { viewport.update(width:trackWidth,duration:store.project.editedDuration) }
+                .onChange(of:trackWidth) { viewport.update(width:trackWidth,duration:store.project.editedDuration) }
+                .onChange(of:store.project.editedDuration) { viewport.update(width:trackWidth,duration:store.project.editedDuration) }
+                .onChange(of:store.playhead) { if store.playing { viewport.follow(store.playhead) } }
             }.padding(.top,4)
-            Text("컷: 순서 이동 · 자막/영역: 시간 이동 · 양 끝: 길이 조절 · 겹친 영역은 왼쪽 목록에서 선택")
-                .font(.system(size:9)).foregroundStyle(Color.muted).frame(maxWidth:.infinity,alignment:.leading).padding(.bottom,8)
-        }.buttonStyle(.plain).textFieldStyle(.roundedBorder).padding(.horizontal,18).background(Color.panel.opacity(0.5))
+            Text(store.tool == .blade ? "자르기 도구: 블록을 클릭하면 그 위치에서 나뉩니다 · A 키로 선택 도구" : "클릭: 선택 · 드래그: 이동/트랙 변경 · 양 끝: 길이 조절 · ⌥휠: 확대 · 가로 휠/Shift+휠: 이동 · 미디어를 끌어다 놓아 배치")
+                .font(.system(size:9)).foregroundStyle(store.tool == .blade ? Color.orange : Color.muted).frame(maxWidth:.infinity,alignment:.leading).padding(.bottom,6)
+        }.buttonStyle(.plain).textFieldStyle(.roundedBorder).padding(.horizontal,14).background(Color.panel.opacity(0.5))
+    }
+    func highlighted(_ row: TimelineRow) -> Bool { (store.selectedTrack == row.kind || store.selectedTrack.linkedToVideo && row.kind.linkedToVideo) && store.selectedLane == row.lane }
+    func icon(_ kind: EditTrack) -> String {
+        switch kind { case .video: return "film"; case .audio: return "waveform"; case .faces: return "person.crop.square"; case .regions: return "viewfinder"; case .captions: return "captions.bubble"; case .titles: return "textformat"; case .music: return "music.note" }
+    }
+    var toolbar: some View {
+        HStack(spacing:11) {
+            Label(store.selectedTrack.rawValue,systemImage:"slider.horizontal.below.rectangle").font(.system(size:11,weight:.semibold)).lineLimit(1)
+            Button(action:store.undo) { Image(systemName:"arrow.uturn.backward") }.disabled(store.undoStack.isEmpty).help("실행 취소 ⌘Z")
+            Button(action:store.redo) { Image(systemName:"arrow.uturn.forward") }.disabled(store.redoStack.isEmpty).help("다시 실행 ⇧⌘Z")
+            Divider().frame(height:14)
+            Picker("",selection:$store.tool) { Image(systemName:"cursorarrow").tag(EditTool.select); Image(systemName:"scissors").tag(EditTool.blade) }.pickerStyle(.segmented).frame(width:74).labelsHidden().help("선택 도구 A · 자르기 도구 B")
+            Button(action:store.split) { Label("분할",systemImage:"square.split.1x2") }.help("재생 위치에서 분할 ⌘B").disabled(!store.canEditTimeline)
+            Button { store.editSelection("cut") } label: { Image(systemName:"scissors.badge.ellipsis") }.help("잘라내기 ⌘X").disabled(!store.selectionAvailable)
+            Button { store.editSelection("copy") } label: { Image(systemName:"doc.on.doc") }.help("복사 ⌘C").disabled(!store.selectionAvailable)
+            Button { store.editSelection("paste") } label: { Image(systemName:"doc.on.clipboard") }.help("재생 위치에 붙여넣기 ⌘V").disabled(!store.canEditTimeline || !store.pasteAvailable)
+            Button { store.editSelection("delete") } label: { Image(systemName:"trash") }.help("삭제 Delete").disabled(!store.selectionAvailable)
+            Button { store.moveSelected(-1) } label: { Image(systemName:"arrow.left.to.line") }.help("선택 항목 앞으로 ⌥⌘←").disabled(!store.selectionAvailable)
+            Button { store.moveSelected(1) } label: { Image(systemName:"arrow.right.to.line") }.help("선택 항목 뒤로 ⌥⌘→").disabled(!store.selectionAvailable)
+            Divider().frame(height:14)
+            Button { store.addMarker() } label: { Image(systemName:"bookmark") }.help("마커 추가 M").disabled(!store.canEditTimeline)
+            Toggle(isOn:$store.snapping) { Image(systemName:"arrow.right.and.line.vertical.and.arrow.left") }.toggleStyle(.button).help("스냅 N")
+            Spacer(minLength:6)
+            if let clip = store.project.clips.first(where:{$0.id == store.selectedClip}), clip.freeze == nil {
+                Text("원본").foregroundStyle(Color.muted)
+                TextField("원본 시작",value:Binding(get:{clip.start},set:{store.trimClip(clip.id,start:$0)}),format:.number.precision(.fractionLength(2))).frame(width:58)
+                Text("–")
+                TextField("원본 끝",value:Binding(get:{clip.end},set:{store.trimClip(clip.id,end:$0)}),format:.number.precision(.fractionLength(2))).frame(width:58)
+            }
+            Button { viewport.zoom(by:1/1.5) } label: { Image(systemName:"minus.magnifyingglass") }.help("축소 ⌘-")
+            Slider(value:Binding(get:{viewport.zoomLevel},set:{viewport.zoomLevel = $0}),in:0...1).frame(width:90).controlSize(.mini)
+            Button { viewport.zoom(by:1.5,around:store.playhead) } label: { Image(systemName:"plus.magnifyingglass") }.help("확대 ⌘=")
+            Button("전체") { viewport.fit() }.help("타임라인 전체 보기 ⇧Z")
+            Text(frameTimecode(store.project.editedDuration,fps:store.project.fps)).font(.system(size:10,design:.monospaced)).foregroundStyle(Color.muted)
+        }.font(.system(size:10)).frame(height:34)
+    }
+    var rangeBar: some View {
+        HStack(spacing:9) {
+            Label("내보내기 구간",systemImage:"inset.filled.rectangle").foregroundStyle(Color.mint)
+            Button("시작 I",action:store.markIn)
+            Button("끝 O",action:store.markOut)
+            TextField("내보내기 시작",value:Binding(get:{store.project.exportRange?.start ?? 0},set:{store.setExportRange(start:$0,end:store.project.exportRange?.end ?? store.project.editedDuration)}),format:.number.precision(.fractionLength(2))).frame(width:62)
+            Text("–")
+            TextField("내보내기 끝",value:Binding(get:{store.project.exportRange?.end ?? store.project.editedDuration},set:{store.setExportRange(start:store.project.exportRange?.start ?? 0,end:$0)}),format:.number.precision(.fractionLength(2))).frame(width:62)
+            Button("선택 범위",action:store.exportSelectedClips).disabled(!store.selectionAvailable)
+            Button("해제") { store.project.exportRange = nil }.disabled(store.project.exportRange == nil)
+            Button("범위 삭제",action:store.deleteMarkedRange).disabled(store.project.exportRange == nil)
+            Divider().frame(height:14)
+            Menu("트랙 추가") {
+                Button("영상 트랙") { store.addLane(.video) }
+                Button("독립 오디오 트랙") { store.addLane(.music) }
+                Button("타이틀 트랙") { store.addLane(.titles) }
+                Button("영역 마스크 트랙") { store.addLane(.regions) }
+                Button("자막 트랙") { store.addLane(.captions) }
+            }.frame(width:78)
+            Button("겹침 분리") { store.project.separateOverlappingOverlays() }
+            Spacer(minLength:4)
+            Text("\(store.project.exportRange == nil ? "전체" : "지정 구간") · \(timecode(store.project.exportDuration))").foregroundStyle(Color.mint)
+        }.font(.system(size:10)).frame(height:30).disabled(!store.canEditTimeline || store.project.editedDuration <= 0)
+    }
+}
+
+struct Triangle: Shape {
+    func path(in r: CGRect) -> Path { var p = Path(); p.move(to:CGPoint(x:r.minX,y:r.minY)); p.addLine(to:CGPoint(x:r.maxX,y:r.minY)); p.addLine(to:CGPoint(x:r.midX,y:r.maxY)); p.closeSubpath(); return p }
+}
+
+// Horizontal scroll and zoom for the lanes: horizontal wheel or Shift+wheel scrolls, ⌥/⌘+wheel
+// zooms around the pointer. Plain vertical wheel keeps scrolling the track list.
+struct TimelineScrollMonitor: NSViewRepresentable {
+    @ObservedObject var viewport: TimelineViewport
+    func makeNSView(context: Context) -> MonitorView { let v = MonitorView(); v.viewport = viewport; return v }
+    func updateNSView(_ view: MonitorView, context: Context) { view.viewport = viewport }
+    static func dismantleNSView(_ view: MonitorView, coordinator: ()) { view.stop() }
+    final class MonitorView: NSView {
+        weak var viewport: TimelineViewport?
+        private var monitor: Any?
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow(); stop()
+            guard window != nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching:.scrollWheel) { [weak self] event in
+                guard let self, let viewport = self.viewport, event.window === self.window else { return event }
+                let local = self.convert(event.locationInWindow,from:nil)
+                guard let clip = self.visibleRectInSuperview, clip.contains(local) else { return event }
+                let dx = event.scrollingDeltaX, dy = event.scrollingDeltaY
+                let scale = event.hasPreciseScrollingDeltas ? 1.0 : 8.0
+                if event.modifierFlags.contains(.option) || event.modifierFlags.contains(.command) {
+                    let factor = pow(1.01,Double(dy+dx)*(event.hasPreciseScrollingDeltas ? 1 : 6))
+                    MainActor.assumeIsolated { viewport.zoom(by:factor,around:viewport.time(local.x)) }
+                    return nil
+                }
+                if abs(dx) > abs(dy) || event.modifierFlags.contains(.shift) {
+                    let delta = abs(dx) > abs(dy) ? dx : dy
+                    MainActor.assumeIsolated { viewport.scroll(seconds:-Double(delta)*scale/viewport.pixelsPerSecond) }
+                    return nil
+                }
+                return event
+            }
+        }
+        // Only the part of the lanes actually shown by the enclosing scroll view.
+        private var visibleRectInSuperview: CGRect? { let r = visibleRect; return r.isEmpty ? nil : r }
+        func stop() { if let monitor { NSEvent.removeMonitor(monitor) }; monitor = nil }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        deinit { if let monitor { NSEvent.removeMonitor(monitor) } }
+    }
+}
+
+struct TimelineScrollBar: View {
+    @ObservedObject var viewport: TimelineViewport
+    @State private var origin: Double?
+    var body: some View {
+        GeometryReader { geo in
+            let total = max(viewport.duration*1.05,viewport.visible.end)
+            let w = geo.size.width
+            let thumb = max(24,w*min(1,(viewport.visible.end-viewport.visible.start)/max(0.001,total)))
+            let x = (w-thumb)*min(1,max(0,viewport.offset/max(0.001,total-(viewport.visible.end-viewport.visible.start))))
+            ZStack(alignment:.leading) {
+                Capsule().fill(Color.raised.opacity(0.6))
+                Capsule().fill(Color.muted.opacity(0.7)).frame(width:thumb).offset(x:x.isFinite ? x : 0)
+                    .gesture(DragGesture(minimumDistance:0).onChanged { v in
+                        if origin == nil { origin = viewport.offset }
+                        let span = viewport.visible.end-viewport.visible.start
+                        let seconds = v.translation.width/max(1,w-thumb)*max(0.001,total-span)
+                        viewport.offset = (origin ?? 0)+seconds; viewport.fitted = false; viewport.clamp()
+                    }.onEnded { _ in origin = nil })
+            }
+        }.help("드래그해서 타임라인 이동")
     }
 }
 
 struct TimelineLanes: View {
     @EnvironmentObject var store: EditorStore
+    @ObservedObject var viewport: TimelineViewport
+    let rows: [TimelineRow]
     var body: some View {
-        GeometryReader { geo in
-            let width = geo.size.width
-            let duration = max(0.01,store.project.editedDuration)
-            VStack(alignment:.leading,spacing:6) {
-                ForEach(store.timelineRows) { row in
-                    ZStack(alignment:.leading) {
-                        RoundedRectangle(cornerRadius:3).fill(Color.raised.opacity(0.4))
-                            .dropDestination(for:String.self) { values,point in
-                                guard let raw = values.first, let id = UUID(uuidString:raw) else { return false }
-                                store.moveItem(id,to:row.kind,lane:row.lane,at:point.x/width*duration); return true
-                            }
-                        if row.kind.linkedToVideo {
-                            ForEach(Array(store.project.gaps(in:row.lane).enumerated()),id:\.offset) { _,gap in
-                                Color.white.opacity(0.001).frame(width:width*gap.duration/duration,height:25).contentShape(Rectangle())
-                                    .contextMenu { Button("빈 구간 삭제 후 붙이기") { store.closeGap(gap,lane:row.lane) } }
-                                    .offset(x:width*gap.start/duration)
-                            }
-                            ForEach(store.project.timeline.filter { ($0.clip.lane ?? 0) == row.lane }) { entry in
-                                ZStack {
-                                    if row.kind == .video { TimelineClipCell(entry:entry,pixelsPerSecond:width/duration) }
-                                    else { LinkedClipCell(entry:entry,kind:row.kind) }
-                                }.frame(width:max(1,width*entry.clip.duration/duration),height:25).offset(x:width*entry.start/duration)
-                            }
-                        } else {
-                            ForEach(store.project.overlayItems(regionsOnly:row.kind == .regions).filter { item in
-                                row.kind == .regions ? (store.project.regions.first(where:{$0.id == item.sourceID})?.lane ?? 0) == row.lane : (store.project.captions.first(where:{$0.id == item.sourceID})?.lane ?? 0) == row.lane
-                            }) { item in
-                                OverlayTimelineBlock(item:item,scale:width/duration)
-                                    .frame(width:max(22,width*(item.end-item.start)/duration),height:25).offset(x:width*item.start/duration)
-                            }
+        let entries = store.project.timeline
+        let visible = viewport.visible
+        let pps = viewport.pixelsPerSecond
+        ZStack(alignment:.topLeading) {
+            ForEach(Array(rowOffsets.enumerated()),id:\.element.row.id) { _,item in
+                let row = item.row, y = item.y, h = rowHeight(row.kind)
+                ZStack(alignment:.topLeading) {
+                    RoundedRectangle(cornerRadius:3).fill(Color.raised.opacity(row.kind == .faces ? 0.25 : 0.4))
+                        .contentShape(Rectangle())
+                        .onTapGesture { location in
+                            if store.tool == .blade { return }
+                            store.selectLane(row.kind,lane:row.lane); store.seek(viewport.time(location.x))
                         }
-                    }.frame(width:width,height:25)
+                        .dropDestination(for:String.self) { values,point in
+                            guard let raw = values.first else { return false }
+                            return store.dropMedia(raw,at:store.snapTime(viewport.time(point.x),pixelsPerSecond:pps),row:row)
+                        }
+                    rowContent(row,entries:entries,visible:visible,height:h)
+                }.frame(width:viewport.width,height:h).offset(y:y)
+            }
+            ForEach(store.project.markers.filter { visible.contains($0.time) }) { marker in
+                Rectangle().fill(Color.orange.opacity(0.45)).frame(width:1).offset(x:viewport.x(marker.time)).allowsHitTesting(false)
+            }
+        }.frame(width:viewport.width,height:rows.reduce(0) { $0+rowHeight($1.kind)+rowSpacing },alignment:.topLeading).clipped()
+            .onAppear { store.thumbnails.onUpdate = { [weak store] in store?.thumbnailRevision += 1 } }
+            .environment(\.timelineScale,pps)
+    }
+    var rowOffsets: [(row: TimelineRow, y: Double)] {
+        var y = 0.0
+        return rows.map { row in defer { y += rowHeight(row.kind)+rowSpacing }; return (row,y) }
+    }
+    @ViewBuilder func rowContent(_ row: TimelineRow, entries: [TimelineEntry], visible: TimelineRange, height: Double) -> some View {
+        switch row.kind {
+        case .video, .audio, .faces:
+            if row.kind == .video {
+                ForEach(Array(store.project.gaps(in:row.lane).filter { $0.intersects(visible) }.enumerated()),id:\.offset) { _,gap in
+                    Color.white.opacity(0.001).frame(width:max(1,gap.duration*viewport.pixelsPerSecond),height:height).contentShape(Rectangle())
+                        .contextMenu { Button("빈 구간 삭제 후 붙이기") { store.closeGap(gap,lane:row.lane) } }
+                        .offset(x:viewport.x(gap.start))
                 }
-
-            }.frame(width:width,height:geo.size.height,alignment:.topLeading).clipped()
+            }
+            ForEach(entries.filter { $0.lane == row.lane && $0.end > visible.start && $0.start < visible.end }) { entry in
+                Group {
+                    switch row.kind {
+                    case .video: VideoClipCell(entry:entry,row:row,viewport:viewport)
+                    case .audio: LinkedAudioCell(entry:entry,row:row)
+                    default: FaceCoverageCell(entry:entry,row:row)
+                    }
+                }.frame(width:max(2,entry.clip.timelineDuration*viewport.pixelsPerSecond),height:height).offset(x:viewport.x(entry.start))
+            }
+        case .regions, .captions, .titles:
+            ForEach(overlayItems(row).filter { $0.end > visible.start && $0.start < visible.end },id:\.id) { item in
+                OverlayTimelineBlock(item:item,row:row,viewport:viewport)
+                    .frame(width:max(14,(item.end-item.start)*viewport.pixelsPerSecond),height:height).offset(x:viewport.x(item.start))
+            }
+        case .music:
+            ForEach(store.project.audioClips.filter { $0.lane == row.lane && $0.timelineEnd > visible.start && $0.position < visible.end }) { clip in
+                OverlayTimelineBlock(item:TimelineBlockItem(id:clip.id,kind:.music,start:clip.position,end:clip.timelineEnd,title:store.project.media.first(where:{ $0.id == clip.source })?.name ?? "오디오",muted:clip.gain == 0),row:row,viewport:viewport)
+                    .frame(width:max(14,clip.duration*viewport.pixelsPerSecond),height:height).offset(x:viewport.x(clip.position))
+            }
+        }
+    }
+    func overlayItems(_ row: TimelineRow) -> [TimelineBlockItem] {
+        switch row.kind {
+        case .regions: return store.project.regions.filter { ($0.lane ?? 0) == row.lane }.map { TimelineBlockItem(id:$0.id,kind:.regions,start:$0.start,end:$0.end,title:$0.name,muted:!$0.enabled) }
+        case .captions: return store.project.captions.filter { ($0.lane ?? 0) == row.lane }.map { TimelineBlockItem(id:$0.id,kind:.captions,start:$0.start,end:$0.end,title:$0.text.replacingOccurrences(of:"\n",with:" "),muted:false,warning:($0.confidence ?? 1) < SpeechOptions.reviewConfidence) }
+        default: return store.project.titles.filter { ($0.lane ?? 0) == row.lane }.map { TimelineBlockItem(id:$0.id,kind:.titles,start:$0.start,end:$0.end,title:$0.text.replacingOccurrences(of:"\n",with:" "),muted:false) }
         }
     }
 }
+
+private struct TimelineScaleKey: EnvironmentKey { static let defaultValue = 60.0 }
+extension EnvironmentValues { var timelineScale: Double { get { self[TimelineScaleKey.self] } set { self[TimelineScaleKey.self] = newValue } } }
+
+struct VideoClipCell: View {
+    @EnvironmentObject var store: EditorStore
+    let entry: TimelineEntry
+    let row: TimelineRow
+    @ObservedObject var viewport: TimelineViewport
+    @State private var drag: CGSize = .zero
+    @State private var dragging = false
+    @State private var trimOrigin: Double?
+    var selected: Bool { store.selectedTrack.linkedToVideo && store.selectedClips.contains(entry.id) }
+    var source: MediaSource? { store.project.source(entry.clip.source) }
+    var body: some View {
+        GeometryReader { geo in
+            let width = geo.size.width
+            ZStack(alignment:.topLeading) {
+                FilmstripView(entry:entry,source:source,viewport:viewport,height:geo.size.height).clipShape(RoundedRectangle(cornerRadius:4))
+                LinearGradient(colors:[.black.opacity(0.55),.clear],startPoint:.top,endPoint:.center).clipShape(RoundedRectangle(cornerRadius:4)).allowsHitTesting(false)
+                if entry.overlap > 0 {
+                    // Transition region shaded where this clip blends over the previous one.
+                    Rectangle().fill(Color.accent.opacity(0.35)).frame(width:entry.overlap*viewport.pixelsPerSecond).overlay(Image(systemName:"rhombus.fill").font(.system(size:8)).foregroundStyle(.white)).allowsHitTesting(false)
+                } else if entry.clip.transition != nil {
+                    Image(systemName:"rhombus.fill").font(.system(size:8)).foregroundStyle(Color.accent).padding(3).allowsHitTesting(false)
+                }
+                HStack(spacing:4) {
+                    if store.offlineMedia.contains(source?.id ?? UUID()) { Image(systemName:"exclamationmark.triangle.fill").foregroundStyle(.red) }
+                    Text(source?.name ?? "컷").lineLimit(1)
+                    if let f = entry.clip.freeze { Text("정지 \(String(format:"%.1f",f))초").foregroundStyle(.cyan) }
+                    else if entry.clip.rate != 1 { Text("\(Int((entry.clip.rate*100).rounded()))%").foregroundStyle(.yellow) }
+                    if entry.clip.color?.isIdentity == false { Image(systemName:"camera.filters") }
+                    if entry.clip.transform?.isIdentity == false { Image(systemName:"rectangle.inset.topright.filled") }
+                    if source?.maskApplied == true { Image(systemName:"checkmark.shield.fill").foregroundStyle(Color.mint) }
+                }.font(.system(size:9,weight:.medium)).foregroundStyle(.white).padding(.horizontal,entry.overlap > 0 ? entry.overlap*viewport.pixelsPerSecond+4 : 6).padding(.top,3)
+                    .frame(width:width,alignment:.leading).clipped().allowsHitTesting(false)
+            }
+            .overlay(RoundedRectangle(cornerRadius:4).stroke(selected ? Color.accent : Color.accent.opacity(0.25),lineWidth:selected ? 2 : 1))
+            .contentShape(Rectangle())
+            .onTapGesture(count:2) { store.seek(entry.start) }
+            .gesture(SpatialTapGesture().onEnded { value in
+                if store.tool == .blade { store.blade(at:entry.start+value.location.x/viewport.pixelsPerSecond,row:row) }
+                else { store.selectClip(entry.id,extending:NSApp.currentEvent?.modifierFlags.contains(.command) == true) }
+            })
+            .gesture(DragGesture(minimumDistance:4).onChanged { v in
+                guard store.tool == .select, trimOrigin == nil else { return }
+                if !dragging { dragging = true; store.selectClip(entry.id) }
+                drag = v.translation
+            }.onEnded { v in
+                guard dragging else { return }
+                dragging = false; drag = .zero
+                let target = store.snapTime(entry.start+v.translation.width/viewport.pixelsPerSecond,pixelsPerSecond:viewport.pixelsPerSecond,excluding:entry.id)
+                let stride = rowHeight(.video)+rowHeight(.audio)+rowHeight(.faces)+rowSpacing*3
+                let lane = max(0,min(63,entry.lane-Int((v.translation.height/stride).rounded())))
+                store.dropClip(entry.id,at:target,lane:lane)
+            })
+            .contextMenu { ClipContextMenu(entry:entry) }
+            .overlay(alignment:.leading) { if width > 24 && store.tool == .select { trimHandle(start:true) } }
+            .overlay(alignment:.trailing) { if width > 24 && store.tool == .select { trimHandle(start:false) } }
+            .offset(drag).opacity(dragging ? 0.7 : 1).zIndex(dragging ? 10 : 0)
+            .help("\(source?.name ?? "") · 원본 \(timecode(entry.clip.start))–\(timecode(entry.clip.end)) · 편집 \(timecode(entry.start))–\(timecode(entry.end))")
+        }
+    }
+    func trimHandle(start: Bool) -> some View {
+        RoundedRectangle(cornerRadius:2).fill(Color.white.opacity(0.65)).frame(width:5,height:22).padding(.horizontal,1)
+            .contentShape(Rectangle().inset(by:-3)).onHover { inside in if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() } }
+            .gesture(DragGesture(minimumDistance:1,coordinateSpace:.global).onChanged { value in
+                if trimOrigin == nil { trimOrigin = start ? entry.clip.start : (entry.clip.freeze != nil ? entry.clip.end : entry.clip.end); store.beginTimelineGesture(); store.selectClip(entry.id) }
+                let seconds = value.translation.width/max(0.001,viewport.pixelsPerSecond)*(entry.clip.freeze != nil ? 1 : entry.clip.rate)
+                let time = (trimOrigin ?? 0)+seconds
+                if start { store.trimClip(entry.id,start:time) } else { store.trimClip(entry.id,end:time) }
+            }.onEnded { _ in trimOrigin = nil; store.endTimelineGesture() })
+    }
+}
+
+struct ClipContextMenu: View {
+    @EnvironmentObject var store: EditorStore
+    let entry: TimelineEntry
+    var body: some View {
+        Button("선택") { store.selectClip(entry.id) }
+        Menu("속도") {
+            ForEach([0.25,0.5,0.75,1,1.5,2,4,8],id:\.self) { s in Button("\(Int(s*100))%") { store.selectClip(entry.id); store.setSpeed(s) } }
+        }
+        Button("재생 위치에 정지 화면 추가") { store.selectClip(entry.id); store.addFreezeFrame() }
+        Menu("전환 효과 (시작 부분)") {
+            ForEach(TransitionKind.allCases,id:\.self) { k in Button(k.rawValue) { store.selectClip(entry.id); store.setTransition(k) } }
+            Divider(); Button("전환 제거") { store.selectClip(entry.id); store.setTransition(nil) }
+        }
+        Button("오디오 분리") { store.selectClip(entry.id); store.detachAudio() }
+        Button(entry.clip.audioMuted == true ? "소리 켜기" : "소리 끄기") { store.selectClip(entry.id); store.updateClips { $0.audioMuted = $0.audioMuted == true ? nil : true } }
+        Divider()
+        Menu("트랙으로 이동") {
+            ForEach(0..<store.laneCount(.video),id:\.self) { lane in Button("영상 \(lane+1)") { store.moveItem(entry.id,to:.video,lane:lane) } }
+            Button("새 영상 트랙") { store.addLane(.video); store.moveItem(entry.id,to:.video,lane:store.selectedLane) }
+        }
+        Button("복사") { store.selectClip(entry.id); store.copyClips() }
+        Button("잘라내기") { store.selectClip(entry.id); store.cutClips() }
+        Button("삭제") { store.selectClip(entry.id); store.deleteClip() }
+        Button("이 컷만 내보내기 범위로") { store.selectClip(entry.id); store.exportSelectedClips() }
+        Button("효과 초기화") { store.selectClip(entry.id); store.updateClips { $0.color = nil; $0.transform = nil; $0.videoFadeIn = nil; $0.videoFadeOut = nil } }
+        if let id = store.project.source(entry.clip.source)?.id {
+            Button("미디어 패널에서 보기") { store.selectedMedia = id; store.tab = .media }
+            Button("이 미디어의 얼굴 보기") { store.selectedMedia = id; store.tab = .faces }
+        }
+    }
+}
+
+// Filmstrip: one thumbnail per slot, taken at the source time shown in that slot.
+struct FilmstripView: View {
+    @EnvironmentObject var store: EditorStore
+    let entry: TimelineEntry
+    let source: MediaSource?
+    @ObservedObject var viewport: TimelineViewport
+    let height: Double
+    var body: some View {
+        let _ = store.thumbnailRevision
+        let slot = max(24,height*16/9)
+        let clipX = viewport.x(entry.start), width = entry.clip.timelineDuration*viewport.pixelsPerSecond
+        let first = max(0,Int(floor(-clipX/slot))), last = Int(ceil(min(width,viewport.width-clipX)/slot))
+        let step = ThumbnailCache.step(for:slot/viewport.pixelsPerSecond*max(0.001,entry.clip.rate == 0 ? 1 : entry.clip.rate))
+        let frames: [(Double,CGImage?)] = source.map { s in
+            (first..<max(first,min(last,first+200))).map { i in
+                let t = entry.start+(Double(i)+0.5)*slot/viewport.pixelsPerSecond
+                return (Double(i)*slot,store.thumbnails.frame(s,at:entry.sourceTime(at:min(entry.end-0.001,t)),step:step))
+            }
+        } ?? []
+        Canvas { context,size in
+            context.fill(Path(CGRect(origin:.zero,size:size)),with:.color(Color.accent.opacity(0.22)))
+            for (x,image) in frames {
+                guard let image else { continue }
+                let aspect = Double(image.width)/max(1,Double(image.height))
+                let w = min(slot,size.height*aspect)
+                context.draw(Image(decorative:image,scale:1),in:CGRect(x:x+(slot-w)/2,y:0,width:w,height:size.height))
+            }
+        }.allowsHitTesting(false)
+    }
+}
+
+struct LinkedAudioCell: View {
+    @EnvironmentObject var store: EditorStore
+    let entry: TimelineEntry
+    let row: TimelineRow
+    var body: some View {
+        let _ = store.waveformRevision
+        let sourceID = store.project.sourceID(of:entry.clip)
+        let wave = sourceID.flatMap { store.waveforms[$0] }
+        let muted = entry.clip.gain == 0 || entry.clip.freeze != nil
+        let selected = store.selectedTrack.linkedToVideo && store.selectedClips.contains(entry.id)
+        ZStack {
+            RoundedRectangle(cornerRadius:3).fill(Color.cyan.opacity(muted ? 0.04 : 0.1))
+            WaveformShape(wave:wave,from:entry.clip.start,to:entry.clip.freeze != nil ? entry.clip.start : entry.clip.end,gain:min(2,entry.clip.gain))
+                .fill(muted ? Color.muted.opacity(0.35) : Color.cyan.opacity(0.85)).allowsHitTesting(false)
+            if entry.clip.audioMuted == true { Text("소리 꺼짐 · 분리됨").font(.system(size:8)).foregroundStyle(Color.muted).allowsHitTesting(false) }
+            if selected { RoundedRectangle(cornerRadius:3).stroke(Color.accent,lineWidth:1).allowsHitTesting(false) }
+        }.contentShape(Rectangle())
+            .gesture(SpatialTapGesture().onEnded { value in
+                if store.tool == .blade { store.blade(at:entry.start+value.location.x/max(0.001,store.viewport.pixelsPerSecond),row:row) }
+                else { store.selectClip(entry.id,extending:NSApp.currentEvent?.modifierFlags.contains(.command) == true); store.selectedTrack = .audio }
+            })
+            .contextMenu { ClipContextMenu(entry:entry) }
+    }
+}
+// Peak envelope of source audio between two source times, drawn across the given width.
+struct WaveformShape: Shape {
+    var wave: AudioWaveform?
+    var from: Double
+    var to: Double
+    var gain: Double = 1
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        guard let wave, wave.hasAudio, to > from, rect.width > 0 else { return path }
+        let columns = min(Int(rect.width),2000)
+        guard columns > 0 else { return path }
+        let span = (to-from)/Double(columns)
+        for x in 0..<columns {
+            let a = from+Double(x)*span
+            let peak = Double(sqrt(wave.peak(from:a,to:a+span)))*min(1,gain)
+            let h = peak*rect.height*0.92
+            if h > 0.3 { path.addRect(CGRect(x:rect.minX+Double(x)*rect.width/Double(columns),y:rect.midY-h/2,width:max(1,rect.width/Double(columns)),height:h)) }
+        }
+        return path
+    }
+}
+struct FaceCoverageCell: View {
+    @EnvironmentObject var store: EditorStore
+    let entry: TimelineEntry
+    let row: TimelineRow
+    var body: some View {
+        let id = store.project.sourceID(of:entry.clip)
+        let spans = id.flatMap { store.faceCoverage[$0] } ?? []
+        let review = id.flatMap { i in store.project.media.first { $0.id == i }?.reviewRanges } ?? []
+        Canvas { context,size in
+            let duration = max(0.0001,entry.clip.timelineDuration)
+            func draw(_ list: [TimelineRange], _ color: Color) {
+                for span in list where span.end > entry.clip.start && span.start < entry.clip.end {
+                    let a = entry.clip.offset(forSource:max(entry.clip.start,span.start)), b = entry.clip.offset(forSource:min(entry.clip.end,span.end))
+                    let x = a/duration*size.width
+                    context.fill(Path(CGRect(x:x,y:0,width:max(1,(b-a)/duration*size.width),height:size.height)),with:.color(color))
+                }
+            }
+            if entry.clip.freeze != nil {
+                if spans.contains(where:{ $0.contains(entry.clip.start) }) { context.fill(Path(CGRect(origin:.zero,size:size)),with:.color(Color.mint.opacity(0.55))) }
+            } else { draw(spans,Color.mint.opacity(0.55)); draw(review,Color.orange.opacity(0.8)) }
+        }
+        .background(RoundedRectangle(cornerRadius:2).fill(Color.mint.opacity(0.06)))
+        .contentShape(Rectangle())
+        .onTapGesture { store.selectClip(entry.id); store.selectedTrack = .faces; if let id { store.selectedMedia = id }; store.tab = .faces }
+        .help("민트: 얼굴 마스크가 적용되는 구간 · 주황: 얼굴 누락이 의심되어 검토를 권장하는 구간")
+    }
+}
+
 struct TimelineRuler: View {
     @EnvironmentObject var store: EditorStore
+    @ObservedObject var viewport: TimelineViewport
     @State private var rangeGesture = false
     @State private var rangeOrigin = 0.0
     var body: some View {
         GeometryReader { geo in
             let width = geo.size.width
-            let duration = max(0.01,store.project.editedDuration)
+            let steps = viewport.tickSteps
+            let visible = viewport.visible
             ZStack(alignment:.topLeading) {
                 Canvas { context,size in
-                    for tick in 0...60 {
-                        let x = width*Double(tick)/60
-                        let major = tick%10 == 0
-                        var line = Path(); line.move(to:CGPoint(x:x,y:major ? 19 : 27)); line.addLine(to:CGPoint(x:x,y:40))
-                        context.stroke(line,with:.color(major ? Color.muted : Color.muted.opacity(0.4)),lineWidth:1)
+                    var t = floor(visible.start/steps.minor)*steps.minor
+                    while t <= visible.end+steps.minor {
+                        let x = viewport.x(t)
+                        let major = abs((t/steps.major).rounded()-t/steps.major) < 0.001
+                        var line = Path(); line.move(to:CGPoint(x:x,y:major ? 18 : 28)); line.addLine(to:CGPoint(x:x,y:40))
+                        context.stroke(line,with:.color(major ? Color.muted : Color.muted.opacity(0.35)),lineWidth:1)
+                        if major { context.draw(Text(rulerLabel(t,step:steps.major)).font(.system(size:8,design:.monospaced)).foregroundColor(Color.muted),at:CGPoint(x:x+3,y:8),anchor:.leading) }
+                        t += steps.minor
+                    }
+                    if store.project.editedDuration > 0 {
+                        let end = viewport.x(store.project.editedDuration)
+                        if end < size.width { context.fill(Path(CGRect(x:end,y:0,width:size.width-end,height:size.height)),with:.color(Color.black.opacity(0.25))) }
                     }
                 }.allowsHitTesting(false)
-                HStack { ForEach(0..<7) { n in Text(timecode(duration*Double(n)/6)).font(.system(size:8,design:.monospaced)); if n < 6 { Spacer() } } }.frame(height:16).allowsHitTesting(false)
-                TimelineWheelSurface(seek:{ fraction in store.focusTimeline(); store.seek(fraction*duration) },wheel:{ delta,precise,fine in
-                    store.focusTimeline(); store.pause(); store.seek(timelineWheelDestination(current:store.playhead,delta:delta,precise:precise,fine:fine,duration:duration))
+                TimelineWheelSurface(seek:{ x in store.focusTimeline(); store.seek(viewport.time(x)) },wheel:{ delta,precise,fine in
+                    store.focusTimeline(); store.pause(); store.seek(timelineWheelDestination(current:store.playhead,delta:delta,precise:precise,fine:fine,duration:store.project.editedDuration))
                 }).help("클릭·드래그로 이동 · 휠로 재생 위치 이동 · Shift+휠 미세 이동")
+                ForEach(store.project.markers.filter { visible.contains($0.time) }) { marker in
+                    Image(systemName:"bookmark.fill").font(.system(size:9)).foregroundStyle(store.selectedMarker == marker.id ? Color.yellow : Color.orange)
+                        .position(x:viewport.x(marker.time),y:34)
+                        .onTapGesture { store.selectedMarker = marker.id; store.seek(marker.time) }
+                        .contextMenu {
+                            Button("이 위치로 이동") { store.seek(marker.time) }
+                            Button("마커 삭제") { store.project.markers.removeAll { $0.id == marker.id } }
+                        }
+                        .help(marker.name)
+                }
                 if let range = store.project.exportRange {
-                    Rectangle().fill(Color.mint).frame(width:width*range.duration/duration,height:3).offset(x:width*range.start/duration,y:40).allowsHitTesting(false)
-                    rangeHandle(isStart:true,time:range.start,width:width,duration:duration)
-                    rangeHandle(isStart:false,time:range.end,width:width,duration:duration)
+                    Rectangle().fill(Color.mint).frame(width:max(1,range.duration*viewport.pixelsPerSecond),height:3).offset(x:viewport.x(range.start),y:40).allowsHitTesting(false)
+                    rangeHandle(isStart:true,time:range.start,width:width)
+                    rangeHandle(isStart:false,time:range.end,width:width)
                 }
             }
         }
     }
-    func rangeHandle(isStart: Bool,time: Double,width: Double,duration: Double) -> some View {
+    func rangeHandle(isStart: Bool,time: Double,width: Double) -> some View {
         RoundedRectangle(cornerRadius:2).fill(Color.mint).frame(width:8,height:20)
             .overlay(Text(isStart ? "I" : "O").font(.system(size:7,weight:.bold)).foregroundStyle(Color.base))
-            .contentShape(Rectangle()).position(x:max(4,min(width-4,width*time/duration)),y:30)
+            .contentShape(Rectangle()).position(x:max(4,min(width-4,viewport.x(time))),y:30)
             .gesture(DragGesture(minimumDistance:0,coordinateSpace:.global).onChanged { v in
                 if !rangeGesture { rangeOrigin = time; store.beginTimelineGesture(); rangeGesture = true }
-                let next = rangeOrigin+v.translation.width/width*duration
-                if isStart { store.setExportRange(start:next,end:store.project.exportRange?.end ?? duration) }
+                let next = store.snapTime(rangeOrigin+v.translation.width/viewport.pixelsPerSecond,pixelsPerSecond:viewport.pixelsPerSecond)
+                if isStart { store.setExportRange(start:next,end:store.project.exportRange?.end ?? store.project.editedDuration) }
                 else { store.setExportRange(start:store.project.exportRange?.start ?? 0,end:next) }
             }.onEnded { _ in store.endTimelineGesture(); rangeGesture = false })
-    }
-}
-struct TimelineClipCell: View {
-    @EnvironmentObject var store: EditorStore
-    var entry: TimelineEntry
-    var pixelsPerSecond: Double
-    @State private var trimOrigin: Double?
-    @State private var trimScale = 1.0
-    var body: some View {
-        GeometryReader { geo in
-            HStack(spacing:4) {
-                Image(systemName:"film")
-                Text("컷 \(entry.index+1)").lineLimit(1)
-                if geo.size.width > 130 { Text(timecode(entry.clip.duration)).foregroundStyle(Color.muted) }
-                Spacer(minLength:0)
-            }.font(.system(size:9)).padding(.horizontal,8).frame(maxWidth:.infinity,maxHeight:.infinity)
-                .background(Color.accent.opacity(((store.selectedTrack.linkedToVideo) && store.selectedClips.contains(entry.id)) ? 0.4 : 0.18),in:RoundedRectangle(cornerRadius:4))
-                .overlay(RoundedRectangle(cornerRadius:4).stroke(((store.selectedTrack.linkedToVideo) && store.selectedClips.contains(entry.id)) ? Color.accent : Color.accent.opacity(0.25),lineWidth:1))
-                .contentShape(Rectangle())
-                .onTapGesture { store.selectClip(entry.id,extending:NSApp.currentEvent?.modifierFlags.contains(.command) == true); store.seek(entry.start) }
-                .draggable(entry.id.uuidString)
-                .dropDestination(for:String.self) { values,point in
-                    guard let raw = values.first, let id = UUID(uuidString:raw), store.project.clips.contains(where:{$0.id == id}) else { return false }
-                    let next = entry.index+1 < store.project.clips.count ? store.project.clips[entry.index+1].id : nil
-                    store.moveClip(id,before:point.x < geo.size.width/2 ? entry.id : next); return true
-                }
-                .contextMenu {
-                    Menu("트랙으로 이동") {
-                        ForEach(0..<store.laneCount(.video),id:\.self) { lane in Button("영상 \(lane+1)") { store.moveItem(entry.id,to:.video,lane:lane) } }
-                        Button("새 영상 트랙") { store.addLane(.video); store.moveItem(entry.id,to:.video,lane:store.selectedLane) }
-                    }
-                    Button("이 컷 선택") { store.selectClip(entry.id) }
-                    Button("복사") { store.selectClip(entry.id); store.copyClips() }
-                    Button("잘라내기") { store.selectClip(entry.id); store.cutClips() }
-                    Button("삭제 후 붙이기") { store.selectClip(entry.id); store.deleteClip() }
-                    Button("앞으로 이동") { store.selectClip(entry.id); store.moveSelected(-1) }
-                    Button("뒤로 이동") { store.selectClip(entry.id); store.moveSelected(1) }
-                    Button("이 컷만 내보내기") { store.selectClip(entry.id); store.exportSelectedClips() }
-                }
-                .overlay(alignment:.leading) { if geo.size.width > 24 { trimHandle(start:true) } }
-                .overlay(alignment:.trailing) { if geo.size.width > 24 { trimHandle(start:false) } }
-                .help("\(timecode(entry.clip.start))–\(timecode(entry.clip.end)) 원본 구간 · 드래그해서 순서 이동")
-        }
-    }
-    func trimHandle(start: Bool) -> some View {
-        RoundedRectangle(cornerRadius:2).fill(Color.white.opacity(0.55)).frame(width:5,height:18).padding(.horizontal,1)
-            .contentShape(Rectangle()).onHover { inside in if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() } }.gesture(DragGesture(minimumDistance:1,coordinateSpace:.global).onChanged { value in
-                if trimOrigin == nil { trimOrigin = start ? entry.clip.start : entry.clip.end; trimScale = max(0.001,pixelsPerSecond); store.beginTimelineGesture(); store.selectClip(entry.id) }
-                let time = (trimOrigin ?? 0)+value.translation.width/trimScale
-                if start { store.trimClip(entry.id,start:time) } else { store.trimClip(entry.id,end:time) }
-            }.onEnded { _ in trimOrigin = nil; store.endTimelineGesture() })
     }
 }
 
@@ -226,86 +548,10 @@ struct TimelineWheelSurface: NSViewRepresentable {
         override func resetCursorRects() { addCursorRect(bounds,cursor:.pointingHand) }
         override func mouseDown(with event: NSEvent) { move(event) }
         override func mouseDragged(with event: NSEvent) { move(event) }
-        private func move(_ event: NSEvent) { let point = convert(event.locationInWindow,from:nil); seek(min(1,max(0,point.x/max(1,bounds.width)))) }
+        private func move(_ event: NSEvent) { let point = convert(event.locationInWindow,from:nil); seek(min(bounds.width,max(0,point.x))) }
         override func scrollWheel(with event: NSEvent) {
             let delta = abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY) ? event.scrollingDeltaX : event.scrollingDeltaY
             wheel(delta,event.hasPreciseScrollingDeltas,event.modifierFlags.contains(.shift))
         }
-    }
-}
-
-private struct WaveformRenderKey: Equatable {
-    var revision: Int
-    var width: Int
-    var clips: [Clip]
-    var duration: Double
-}
-struct AudioWaveformLane: View {
-    var clip: Clip? = nil
-    @EnvironmentObject var store: EditorStore
-    @State private var bars = Path()
-    var body: some View {
-        GeometryReader { geo in
-            let key = WaveformRenderKey(revision:store.waveformRevision,width:Int(geo.size.width),clips:clip.map { [$0] } ?? store.project.clips,duration:clip?.duration ?? store.project.editedDuration)
-            ZStack(alignment:.leading) {
-                Canvas { context,size in
-                    context.fill(bars,with:.color(store.project.export.muted ? Color.muted.opacity(0.5) : Color.cyan.opacity(0.8)))
-                    var center = Path(); center.move(to:CGPoint(x:0,y:size.height/2)); center.addLine(to:CGPoint(x:size.width,y:size.height/2))
-                    context.stroke(center,with:.color(Color.cyan.opacity(0.2)),lineWidth:0.5)
-                }.allowsHitTesting(false)
-                if !store.waveformStatus.isEmpty { Text(store.waveformStatus).font(.system(size:9)).foregroundStyle(Color.muted).padding(.horizontal,8) }
-            }.onAppear { rebuild(width:key.width) }.onChange(of:key) { rebuild(width:key.width) }
-        }.help("원본 첫 번째 오디오의 파형 · 영상 컷과 함께 잘리고 이동합니다")
-    }
-    private func rebuild(width: Int) {
-        var path = Path()
-        guard width > 0, let data = store.waveform, data.hasAudio, store.project.editedDuration > 0 else { bars = path; return }
-        let duration = clip?.duration ?? store.project.editedDuration
-        let entries = clip.map { [TimelineEntry(clip:$0,index:0,start:0)] } ?? store.project.visibleTimeline
-        for entry in entries {
-            let left = max(0,Int(floor(entry.start/duration*Double(width))))
-            let right = min(width,Int(ceil(entry.end/duration*Double(width))))
-            guard right > left else { continue }
-            for x in left..<right {
-                let a = max(entry.start,Double(x)/Double(width)*duration)
-                let b = min(entry.end,Double(x+1)/Double(width)*duration)
-                let peak = data.peak(from:entry.clip.start+a-entry.start,to:entry.clip.start+b-entry.start)
-                let h = Double(sqrt(peak))*23
-                if h > 0 { path.addRect(CGRect(x:Double(x),y:12.5-h/2,width:1,height:h)) }
-            }
-        }
-        bars = path
-    }
-}
-
-
-struct LinkedClipCell: View {
-    @EnvironmentObject var store: EditorStore
-    let entry: TimelineEntry
-    let kind: EditTrack
-    var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius:3).fill((kind == .audio ? Color.cyan : Color.mint).opacity(0.1))
-            if kind == .audio { AudioWaveformLane(clip:entry.clip) }
-            else {
-                Canvas { context,size in
-                    for span in store.faceSourceCoverage where span.end > entry.clip.start && span.start < entry.clip.end {
-                        let a = max(entry.clip.start,span.start), b = min(entry.clip.end,span.end)
-                        let x = (a-entry.clip.start)/entry.clip.duration*size.width
-                        context.fill(Path(CGRect(x:x,y:0,width:max(1,(b-a)/entry.clip.duration*size.width),height:size.height)),with:.color(Color.mint.opacity(0.5)))
-                    }
-                }.allowsHitTesting(false)
-            }
-            if store.selectedTrack.linkedToVideo && store.selectedClips.contains(entry.id) { RoundedRectangle(cornerRadius:3).stroke(Color.accent,lineWidth:1).allowsHitTesting(false) }
-        }.contentShape(Rectangle())
-            .onTapGesture { store.selectClip(entry.id,extending:NSApp.currentEvent?.modifierFlags.contains(.command) == true); store.selectedTrack = kind; store.seek(entry.start) }
-            .draggable(entry.id.uuidString)
-            .contextMenu {
-                Menu("연결된 세트 트랙 이동") {
-                    ForEach(0..<store.laneCount(.video),id:\.self) { lane in Button("영상 세트 \(lane+1)") { store.moveItem(entry.id,to:.video,lane:lane) } }
-                    Button("새 영상 세트") { store.addLane(.video); store.moveItem(entry.id,to:.video,lane:store.selectedLane) }
-                }
-                Button("연결된 세트 삭제") { store.selectClip(entry.id); store.deleteClip() }
-            }
     }
 }

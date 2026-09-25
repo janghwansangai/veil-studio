@@ -63,8 +63,10 @@ enum FaceAssociation {
 }
 
 enum FaceAnalyzer {
-    struct Output { var tracks: [FaceTrack]; var review: [TimelineRange]; var frames: Int }
-    static let groupThreshold = 0.42
+    struct Output { var tracks: [FaceTrack]; var review: [TimelineRange]; var frames: Int; var diagnostics = "" }
+    // Below the 1st percentile of distances between different people measured on real footage:
+    // a wrong merge could unmask a second child, while fragmentation only costs a click.
+    static let groupThreshold = 0.36
     static func analyze(source: MediaSource, ranges: [TimelineRange]? = nil, mode: FaceAnalysisMode = .standard, cancellation: Cancellation, progress: @escaping (Double,String) -> Void) async throws -> Output {
         try await Task.detached(priority:.userInitiated) {
             if source.isImage { return try analyzeImage(source:source,cancellation:cancellation,progress:progress) }
@@ -161,6 +163,18 @@ enum FaceAnalyzer {
                         if let dist = minDistance([printValue],prints[states[i].index]), dist < bestDistance { bestDistance = dist; resumed = i }
                     }
                 }
+                // A face that reappears close to where a track was lost moments ago (turned head,
+                // brief occlusion) continues that track unless it clearly looks different.
+                if resumed == nil {
+                    var bestPlace = 1.2
+                    for i in states.indices where !matchedStates.contains(i) && time-states[i].lastTime > continuity && time-states[i].lastTime < 2 {
+                        let last = states[i].last, d = FaceAssociation.distance(last,rect)
+                        let ratio = sqrt(rect.width*rect.height)/max(0.0001,sqrt(last.width*last.height))
+                        guard d < bestPlace, ratio > 0.6, ratio < 1.7 else { continue }
+                        if let printValue, let dist = minDistance([printValue],prints[states[i].index]), dist > 0.62 { continue }
+                        bestPlace = d; resumed = i
+                    }
+                }
                 if let i = resumed {
                     append(state:i,rect:rect,time:time,detected:true); matchedStates.insert(i)
                 } else {
@@ -209,6 +223,20 @@ enum FaceAnalyzer {
             let t = states[i].index
             if let last = tracks[t].samples.last, time <= last.time { return }
             tracks[t].samples.append(FaceSample(time:time,rect:rect,predicted:!detected))
+        }
+        // Appearance distances for calibration: fragments of one track (same person) versus
+        // fragments on screen together (different people). Only computed when requested.
+        func distanceReport() -> String {
+            var same: [Double] = [], different: [Double] = []
+            for i in tracks.indices where prints[i].count > 1 {
+                for (a,b) in zip(prints[i],prints[i].dropFirst()) { if let d = minDistance([a],[b]) { same.append(d) } }
+            }
+            for i in tracks.indices { for j in tracks.indices where j > i {
+                guard let s = tracks[i].span, let t = tracks[j].span, min(s.end,t.end)-max(s.start,t.start) > 0.5, let d = minDistance(prints[i],prints[j]) else { continue }
+                different.append(d)
+            } }
+            func q(_ v: [Double], _ p: Double) -> Double { let s = v.sorted(); return s.isEmpty ? .nan : s[min(s.count-1,Int(Double(s.count)*p))] }
+            return String(format:"same n=%d p50 %.3f p90 %.3f p95 %.3f | different n=%d p01 %.3f p05 %.3f p10 %.3f p50 %.3f",same.count,q(same,0.5),q(same,0.9),q(same,0.95),different.count,q(different,0.01),q(different,0.05),q(different,0.1),q(different,0.5))
         }
         // Person-level grouping and spans worth a second look.
         func finish(bridge: Double) -> [FaceTrack] {
@@ -302,9 +330,10 @@ enum FaceAnalyzer {
         }
         try cancellation.check()
         progress(0.995,"\(source.name) · 인물 묶는 중")
+        let diagnostics = ProcessInfo.processInfo.environment["VEIL_FACE_DIAGNOSTICS"] != nil ? builder.distanceReport() : ""
         let tracks = builder.finish(bridge:1)
         progress(1,"얼굴 분석 완료")
-        return Output(tracks:tracks,review:TimelineRange.merged(builder.review),frames:frames)
+        return Output(tracks:tracks,review:TimelineRange.merged(builder.review),frames:frames,diagnostics:diagnostics)
     }
     private static func analyzeImage(source: MediaSource, cancellation: Cancellation, progress: @escaping (Double,String) -> Void) throws -> Output {
         let full = try MediaEngine.stillImage(URL(fileURLWithPath:source.path))

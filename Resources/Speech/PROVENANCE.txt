@@ -6,3 +6,13 @@ Model: multilingual ggml-base.bin
 https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin
 SHA256: 60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe
 Model architecture and weights: https://github.com/openai/whisper (MIT license)
+
+Added in Veil Studio 0.8 (2026-09-25):
+Model: ggml-large-v3-turbo-q5_0.bin (multilingual, quantized)
+https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin
+SHA256: 394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2
+Model architecture and weights: https://github.com/openai/whisper (MIT license)
+Voice activity model: ggml-silero-v5.1.2.bin
+https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin
+SHA256: 29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf
+Silero VAD: https://github.com/snakers4/silero-vad (MIT license)

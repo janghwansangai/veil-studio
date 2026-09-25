@@ -227,6 +227,12 @@ extension EditorStore {
         for i in p.media[m].faces.indices where p.media[m].faces[i].id == id || (face.group != nil && p.media[m].faces[i].group == face.group) || (legacyGroup && p.media[m].faces[i].name == face.name) { p.media[m].faces[i].selected = selected }
         project = p
     }
+    func setGroupSelection(_ ids: [UUID], selected: Bool) {
+        guard let first = ids.first, let m = project.media.firstIndex(where:{ $0.faces.contains { $0.id == first } }) else { return }
+        let set = Set(ids); var p = project
+        for i in p.media[m].faces.indices where set.contains(p.media[m].faces[i].id) { p.media[m].faces[i].selected = selected }
+        project = p
+    }
     func toggleFaceMember(_ id: UUID, selected: Bool) {
         guard let m = project.media.firstIndex(where:{ $0.faces.contains { $0.id == id } }), let i = project.media[m].faces.firstIndex(where:{ $0.id == id }) else { return }
         project.media[m].faces[i].selected = selected

@@ -392,6 +392,36 @@ extension EditorStore {
         status = "빈 구간 삭제 · 영상·오디오·얼굴 마스크 세트를 붙였습니다"
     }
 
+    // Drag-and-drop of a clip on the timeline: a new time and/or lane.
+    func dropClip(_ id: UUID, at time: Double, lane: Int) {
+        guard canEditTimeline, let entry = project.timeline.first(where:{ $0.id == id }) else { return }
+        let sequential = !project.clips.contains { $0.position != nil }
+        if sequential && lane == 0 {
+            // Magnetic storyline: reorder by where the clip was dropped.
+            let before = project.timeline.filter { $0.id != id }.first { ($0.start+$0.end)/2 > time }?.id
+            moveClip(id,before:before); return
+        }
+        if abs(time-entry.start) < 0.0001 && lane == entry.lane { return }
+        moveItem(id,to:.video,lane:lane,at:max(0,time))
+    }
+    // Media dragged from the media panel ("media:<id>") onto a timeline row.
+    func dropMedia(_ raw: String, at time: Double, row: TimelineRow) -> Bool {
+        guard raw.hasPrefix("media:"), let id = UUID(uuidString:String(raw.dropFirst(6))), canEditTimeline, let m = project.media.first(where:{ $0.id == id }) else { return false }
+        seek(time)
+        if row.kind == .music || !m.isVisual { addAudio(id); return true }
+        let sequential = !project.clips.contains { $0.position != nil }
+        if sequential && row.lane == 0 { insertAtPlayhead(id); return true }
+        var p = project; p.normalizeSources(); p.enableVideoLanes()
+        let start = max(0,time)
+        var clip = Clip(start:0,end:m.isImage ? 5 : m.duration,source:m.id); clip.position = start
+        let end = start+clip.timelineDuration
+        var lane = row.kind.linkedToVideo ? row.lane : 0
+        while p.timeline.contains(where:{ $0.lane == lane && $0.start < end && $0.end > time }) && lane < 63 { lane += 1 }
+        clip.lane = lane; p.videoLaneCount = max(p.videoLaneCount ?? 1,lane+1); p.clips.append(clip); p.exportRange = nil
+        commitTimeline(p); selectClip(clip.id); status = "\(m.name) · 영상 \(lane+1) 트랙 \(timecode(time))에 배치"
+        return true
+    }
+
     // MARK: Clip properties (speed, freeze, transitions, look, sound)
     var selectedClipIDs: Set<UUID> { selectedClips.isEmpty ? Set([selectedClip].compactMap { $0 }) : selectedClips }
     // Applies a change to the selected clips, refusing it if positioned clips would collide.
@@ -442,7 +472,7 @@ extension EditorStore {
             if entry.clip.position != nil {
                 // Positioned clips slide left under the previous clip to make room for the blend.
                 let old = entry.overlap
-                let new = kind == nil || previous == nil ? 0 : min(duration,previous!.clip.timelineDuration/2,entry.clip.timelineDuration/2)
+                let new = kind == nil ? 0 : previous.map { min(duration,$0.clip.timelineDuration/2,entry.clip.timelineDuration/2) } ?? 0
                 let shift = new-old
                 if abs(shift) > 0.000001 {
                     for j in p.clips.indices where (p.clips[j].lane ?? 0) == entry.lane && (p.clips[j].position ?? -1) >= entry.start-0.000001 { p.clips[j].position = max(0,(p.clips[j].position ?? 0)-shift) }
@@ -462,6 +492,13 @@ extension EditorStore {
         p.audioClips.append(audio)
         if let i = p.clips.firstIndex(where:{ $0.id == id }) { p.clips[i].audioMuted = true }
         p.separateOverlappingOverlays(); project = p; selectAudioClip(audio.id); status = "오디오를 독립 트랙으로 분리했습니다 · 영상 컷의 소리는 꺼졌습니다"
+    }
+
+    func setCanvas(width: Double, height: Double, fps: Double? = nil) {
+        guard width.isFinite, height.isFinite, width >= 16, height >= 16, width*height <= 120_000_000 else { return }
+        var p = project; p.width = (width/2).rounded()*2; p.height = (height/2).rounded()*2
+        if let fps, fps.isFinite, fps > 0 { p.fps = min(240,fps) }
+        project = p; status = "캔버스 \(Int(p.width))×\(Int(p.height)) · \(String(format:"%.3g",p.fps))fps"
     }
 
     // MARK: Titles and markers
