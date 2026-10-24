@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Veil Studio 소개</title>
+<style>
+:root{
+  --ink:#16181d; --sub:#5b616e; --line:#e6e8ec; --soft:#f5f6f8;
+  --accent:#4b5bdc; --accent-soft:#eef0fd; --warn:#d9822b;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:#e9ebef}
+body{font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Malgun Gothic",sans-serif;
+  color:var(--ink);line-height:1.6;word-break:keep-all;-webkit-font-smoothing:antialiased}
+.page{width:210mm;min-height:297mm;margin:12mm auto;background:#fff;padding:20mm 18mm;position:relative;
+  box-shadow:0 2px 24px rgba(0,0,0,.08);display:flex;flex-direction:column}
+.foot{margin-top:auto;padding-top:8mm;display:flex;justify-content:space-between;font-size:9pt;color:#9aa0ab}
+.eyebrow{font-size:9.5pt;font-weight:700;letter-spacing:.14em;color:var(--accent);text-transform:uppercase}
+h1{font-size:40pt;line-height:1.15;letter-spacing:-.02em;font-weight:800}
+h2{font-size:22pt;letter-spacing:-.01em;margin:2mm 0 6mm;font-weight:800}
+h3{font-size:12.5pt;font-weight:700;margin-bottom:1.5mm}
+p,li{font-size:10.5pt;color:var(--sub)}
+b,strong{color:var(--ink)}
+kbd{font-family:inherit;font-size:9pt;font-weight:600;background:var(--soft);border:1px solid var(--line);
+  border-bottom-width:2px;border-radius:4px;padding:0 5px;color:var(--ink);white-space:nowrap}
+img.shot{width:100%;border-radius:8px;border:1px solid var(--line);display:block}
+
+/* cover */
+.cover{justify-content:center}
+.logo{display:flex;align-items:center;gap:10px;margin-bottom:22mm}
+.logo img{width:44px;height:44px;border-radius:10px}
+.logo span{font-weight:800;font-size:14pt;letter-spacing:.02em}
+.cover .lead{font-size:13pt;margin:7mm 0 12mm;max-width:140mm}
+.badges{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12mm}
+.badge{font-size:9.5pt;font-weight:600;padding:5px 12px;border-radius:99px;background:var(--soft);color:var(--ink)}
+.badge.a{background:var(--accent-soft);color:var(--accent)}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:6mm;margin-top:12mm;border-top:1px solid var(--line);padding-top:8mm}
+.stat b{display:block;font-size:24pt;font-weight:800;letter-spacing:-.02em}
+.stat span{font-size:9.5pt;color:var(--sub)}
+
+/* features */
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:5mm}
+.card{border:1px solid var(--line);border-radius:10px;padding:6mm}
+.card .ic{font-size:18pt;margin-bottom:2mm}
+
+/* steps */
+.flow{display:flex;gap:2mm;align-items:center;margin:0 0 8mm;flex-wrap:wrap}
+.flow span{font-size:9.5pt;font-weight:700;padding:5px 11px;border-radius:6px;background:var(--accent-soft);color:var(--accent)}
+.flow i{color:#b6bbc5;font-style:normal}
+.step{display:grid;grid-template-columns:11mm 1fr;gap:4mm;margin-bottom:6mm}
+.num{width:9mm;height:9mm;border-radius:50%;background:var(--ink);color:#fff;font-weight:800;font-size:10.5pt;
+  display:flex;align-items:center;justify-content:center}
+.step ul{margin:1.5mm 0 0 4.5mm}
+.step li{margin:.6mm 0}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:5mm;margin-top:2mm}
+.cap{font-size:8.5pt;color:#9aa0ab;margin-top:1.5mm;text-align:center}
+.note{background:#fdf4ea;border-left:3px solid var(--warn);border-radius:6px;padding:4mm 5mm;margin-top:3mm}
+.note p{color:#7a4d1c}
+
+/* install & table */
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:7mm}
+.os{border:1px solid var(--line);border-radius:10px;padding:6mm}
+.os ol{margin:3mm 0 0 4.5mm}
+.os li{margin:1.4mm 0}
+.req{font-size:9pt;margin-top:3mm;color:#9aa0ab}
+table{width:100%;border-collapse:collapse;font-size:9.5pt}
+th,td{padding:2.2mm 2mm;border-bottom:1px solid var(--line);text-align:left;color:var(--sub)}
+th{color:var(--ink);font-weight:700;border-bottom:1.5px solid var(--ink)}
+td.c,th.c{text-align:center;width:22mm}
+td.y{color:var(--accent);font-weight:800}
+.keys{display:grid;grid-template-columns:1fr 1fr;column-gap:8mm}
+.keys div{display:flex;justify-content:space-between;align-items:center;padding:2mm 0;border-bottom:1px solid var(--line);font-size:10pt;color:var(--sub)}
+.faq h3{font-size:11pt;margin-top:4mm}
+
+@page{size:A4;margin:0}
+@media print{
+  html{background:#fff}
+  .page{margin:0;box-shadow:none;page-break-after:always;height:297mm;overflow:hidden}
+  .page:last-child{page-break-after:auto}
+}
+@media screen and (max-width:820px){
+  .page{width:auto;min-height:0;margin:0 0 12px;padding:28px 16px}
+  h1{font-size:30pt}
+  .grid,.cols,.pair,.keys,.stats{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<!-- 1. 표지 -->
+<section class="page cover">
+  <div class="logo"><img src="img/icon.png" alt=""><span>Veil Studio</span></div>
+  <div class="eyebrow">얼굴 마스킹 · 자동 자막 영상 편집기</div>
+  <h1 style="margin-top:4mm">기억은 선명하게,<br>얼굴은 안전하게.</h1>
+  <p class="lead">아이들이 나오는 수업·행사 영상에서 <b>얼굴을 자동으로 찾아 가리고</b>, <b>말소리를 자막으로</b> 바꿔 줍니다. 공유하기 전에 꼭 필요한 일만 빠르고 확실하게.</p>
+  <div class="badges">
+    <span class="badge a">🔒 모든 처리는 내 컴퓨터 안에서</span>
+    <span class="badge">Mac 0.8.1</span>
+    <span class="badge">Windows 0.7.0</span>
+    <span class="badge">무료</span>
+  </div>
+  <img class="shot" src="img/editor.jpg" alt="Veil Studio 편집 화면">
+  <div class="stats">
+    <div class="stat"><b>98.7%</b><span>실제 교실 영상에서 마스크가 적용된 프레임 비율</span></div>
+    <div class="stat"><b>약 2%</b><span>잡음 섞인 한국어 음성의 글자 오류율</span></div>
+    <div class="stat"><b>0</b><span>서버로 보내는 영상·음성 데이터</span></div>
+  </div>
+</section>
+
+<!-- 2. 기능 -->
+<section class="page">
+  <div class="eyebrow">What it does</div>
+  <h2>딱 필요한 여섯 가지</h2>
+  <div class="grid">
+    <div class="card"><div class="ic">🧒</div><h3>얼굴 자동 마스킹</h3><p>모든 프레임에서 얼굴을 찾고, 놓친 프레임은 움직임 추적으로 이어 줍니다. 멀리 있는 작은 얼굴까지 찾는 정밀 모드가 기본.</p></div>
+    <div class="card"><div class="ic">👥</div><h3>인물별 선택</h3><p>찾은 얼굴을 사람 단위로 묶어 보여 줍니다. 가릴 사람만 체크하면 끝. 모자이크·블러·단색·스티커 중 선택.</p></div>
+    <div class="card"><div class="ic">💬</div><h3>고정확도 한국어 자막</h3><p>Whisper large-v3-turbo를 앱에 내장. 말소리 구간만 인식해 음악·무음에서 엉뚱한 문장이 생기지 않습니다.</p></div>
+    <div class="card"><div class="ic">🎞️</div><h3>여러 영상 편집</h3><p>가로·세로 영상, 사진, 배경음악을 한 타임라인에서. 전환, 속도, 화면 속 화면, 색 보정, 타이틀까지.</p></div>
+    <div class="card"><div class="ic">📋</div><h3>순차 마스킹 작업 목록</h3><p>영상 수십 개를 넣고 ‘순차 실행’. 검토 후 승인하거나, 찾은 얼굴을 모두 가려 자동 저장.</p></div>
+    <div class="card"><div class="ic">🛡️</div><h3>원본 보호 · 개인정보</h3><p>원본은 덮어쓰지 않고 새 파일로 저장. 위치(GPS) 등 메타데이터는 결과물에 복사하지 않습니다.</p></div>
+  </div>
+  <div class="pair" style="margin-top:7mm">
+    <div><img class="shot" src="img/faces.jpg" alt=""><div class="cap">인물별로 묶인 얼굴 — 가릴 사람만 체크</div></div>
+    <div><img class="shot" src="img/captions.jpg" alt=""><div class="cap">자동 자막 — 불확실한 문장은 노란 표시</div></div>
+  </div>
+  <div class="foot"><span>Veil Studio</span><span>2</span></div>
+</section>
+
+<!-- 3. 사용 방법 -->
+<section class="page">
+  <div class="eyebrow">How to use</div>
+  <h2>다섯 단계면 끝</h2>
+  <div class="flow"><span>불러오기</span><i>→</i><span>얼굴 분석</span><i>→</i><span>인물 선택</span><i>→</i><span>자막</span><i>→</i><span>내보내기</span></div>
+
+  <div class="step"><div class="num">1</div><div><h3>영상 불러오기</h3>
+    <p>영상·사진·오디오를 창에 끌어다 놓거나 <kbd>⌘O</kbd>. 여러 개를 고르면 순서대로 이어 붙인 프로젝트가 됩니다.</p></div></div>
+
+  <div class="step"><div class="num">2</div><div><h3>얼굴 분석 → 가릴 인물 체크</h3>
+    <p><b>얼굴 마스킹</b> 탭에서 <b>얼굴 분석</b> <kbd>⇧⌘F</kbd>. 분석 중에도 편집을 계속할 수 있습니다.</p>
+    <ul><li>가릴 사람만 체크 → <b>마스킹 적용</b></li>
+      <li>인물 창 분리 <kbd>⌥⌘P</kbd> — 다른 모니터에서 얼굴을 최대 4배로 확대</li>
+      <li>한 사람이 여러 개로 나뉘면 <kbd>⌘</kbd>클릭 후 <b>묶기</b></li></ul></div></div>
+
+  <div class="step"><div class="num">3</div><div><h3>자동 자막</h3>
+    <p><b>자막 편집</b> 탭 → <b>자동 자막</b> <kbd>⇧⌘R</kbd>. 노란 표시 문장부터 확인하세요. SRT 가져오기·저장 지원.</p></div></div>
+
+  <div class="step"><div class="num">4</div><div><h3>다듬기 (선택)</h3>
+    <p>분할 <kbd>⌘B</kbd>, 자르기 도구 <kbd>B</kbd>, 전환 <kbd>⌘T</kbd>, 정지 화면 <kbd>⌥F</kbd>, 타이틀 <kbd>⌃T</kbd>. 타임라인은 <kbd>⌥⌘T</kbd>로 별도 창 분리.</p></div></div>
+
+  <div class="step"><div class="num">5</div><div><h3>내보내기</h3>
+    <p><kbd>⌘E</kbd> — 화면 비율(원본·16:9·9:16·1:1·4:3), 해상도(~4K), MP4/MOV, H.264/HEVC 선택. <kbd>I</kbd>/<kbd>O</kbd>로 일부 구간만도 가능.</p></div></div>
+
+  <div class="note"><p><b style="color:#7a4d1c">꼭 확인하세요.</b> 타임라인 얼굴 줄의 <b style="color:#d9822b">주황색 구간</b>은 얼굴을 놓쳤을 수 있는 곳입니다. 재생해 확인하고, 부족하면 <b style="color:#7a4d1c">영역 마스킹</b>으로 직접 가린 뒤 공유하세요.</p></div>
+  <img class="shot" src="img/export.jpg" alt="내보내기 화면" style="margin-top:6mm;max-height:58mm;object-fit:cover;object-position:top">
+  <div class="cap">내보내기 — 내보내는 동안에도 편집을 계속할 수 있습니다</div>
+  <div class="foot"><span>Veil Studio</span><span>3</span></div>
+</section>
+
+<!-- 4. 여러 영상 한 번에 -->
+<section class="page">
+  <div class="eyebrow">Batch</div>
+  <h2>여러 영상은 작업 목록으로</h2>
+  <p style="margin-bottom:6mm"><b>미디어</b> 탭에서 <b>모두 작업 목록에</b> → <b>작업 목록</b> 탭에서 저장 폴더를 고르고 <b>순차 실행</b>.</p>
+  <div class="cols" style="margin-bottom:7mm">
+    <div class="os"><h3>✅ 검토 후 출력 <span style="font-size:9pt;color:var(--accent)">권장</span></h3><p>분석이 끝나면 검토 창에서 마스크가 적용된 영상을 재생해 보고 승인 → <b>승인 항목 출력</b>.</p></div>
+    <div class="os"><h3>⚡ 자동 출력</h3><p>찾은 얼굴을 모두 가려 바로 저장합니다. 결과는 <b>원본이름_마스킹.mp4</b>, 기존 파일은 덮어쓰지 않습니다.</p></div>
+  </div>
+  <img class="shot" src="img/queue.jpg" alt="작업 목록 화면">
+  <div class="cap">작업 목록 — 항목마다 검토/자동 모드를 고를 수 있습니다</div>
+  <div class="foot"><span>Veil Studio</span><span>4</span></div>
+</section>
+
+<!-- 5. 설치 + 버전 차이 -->
+<section class="page">
+  <div class="eyebrow">Install</div>
+  <h2>설치하기</h2>
+  <div class="cols">
+    <div class="os"><h3> Mac · 0.8.1</h3>
+      <ol><li><b>VeilStudio-0.8.1-macOS-arm64.zip</b> 내려받기 (약 640MB)</li>
+        <li>압축을 풀고 앱을 <b>응용 프로그램</b> 폴더로 옮기기</li>
+        <li>처음 한 번: 앱 <b>우클릭 → 열기 → 열기</b></li>
+        <li>막히면 시스템 설정 → 개인정보 보호 및 보안 → <b>그래도 열기</b></li></ol>
+      <div class="req">macOS 14 이상 · Apple Silicon(M1~M4)</div></div>
+    <div class="os"><h3>⊞ Windows · 0.7.0</h3>
+      <ol><li><b>VeilStudio-Setup-0.7.0.exe</b> 내려받기 (약 1.3GB)</li>
+        <li>더블클릭해 설치 실행</li>
+        <li>파란 SmartScreen 창이 뜨면 <b>추가 정보 → 실행</b></li>
+        <li>단축키는 <kbd>⌘</kbd> 대신 <kbd>Ctrl</kbd></li></ol>
+      <div class="req">Windows 10(1903+)/11 64비트 · NVIDIA GPU면 자막 10배↑</div></div>
+  </div>
+
+  <h3 style="margin:9mm 0 2mm">Mac과 Windows 버전 차이</h3>
+  <table>
+    <tr><th>기능</th><th class="c">Mac 0.8.1</th><th class="c">Win 0.7.0</th></tr>
+    <tr><td>얼굴 자동 마스킹 · 인물별 선택 · 영역 마스킹</td><td class="c y">●</td><td class="c y">●</td></tr>
+    <tr><td>Whisper turbo 한국어 자막</td><td class="c y">●</td><td class="c y">●</td></tr>
+    <tr><td>여러 영상 이어 붙이기 · 기본 타임라인 편집</td><td class="c y">●</td><td class="c y">●</td></tr>
+    <tr><td>검출 끊김 추적·보간, 누락 의심 구간 표시</td><td class="c y">●</td><td class="c">—</td></tr>
+    <tr><td>순차 마스킹 작업 목록 · 검토 창</td><td class="c y">●</td><td class="c">—</td></tr>
+    <tr><td>전환 · 속도 · 화면 속 화면 · 타이틀 · 오디오 트랙</td><td class="c y">●</td><td class="c">—</td></tr>
+    <tr><td>타임라인·인물 창 분리(다른 모니터)</td><td class="c y">●</td><td class="c">—</td></tr>
+    <tr><td>배경음악 제거 후 자막 인식</td><td class="c">—</td><td class="c y">●</td></tr>
+  </table>
+  <p style="font-size:9pt;margin-top:3mm">Mac 0.8에서 저장한 .veilproject는 Windows 0.7에서 열 수 없습니다. 오갈 때는 결과 영상(MP4)으로 주고받으세요.</p>
+  <div class="foot"><span>Veil Studio</span><span>5</span></div>
+</section>
+
+<!-- 6. 단축키 + FAQ -->
+<section class="page">
+  <div class="eyebrow">Cheat sheet</div>
+  <h2>단축키 & 자주 묻는 질문</h2>
+  <div class="keys">
+    <div>재생 / 정지<kbd>Space</kbd></div><div>되감기 · 정지 · 빨리<span><kbd>J</kbd> <kbd>K</kbd> <kbd>L</kbd></span></div>
+    <div>1프레임 이동<span><kbd>←</kbd> <kbd>→</kbd></span></div><div>편집 지점 이동<span><kbd>↑</kbd> <kbd>↓</kbd></span></div>
+    <div>분할<kbd>⌘B</kbd></div><div>자르기 / 선택 도구<span><kbd>B</kbd> <kbd>A</kbd></span></div>
+    <div>스냅<kbd>N</kbd></div><div>마커<kbd>M</kbd></div>
+    <div>확대 · 축소 · 전체<span><kbd>⌘=</kbd> <kbd>⌘-</kbd> <kbd>⇧Z</kbd></span></div><div>구간 시작·끝<span><kbd>I</kbd> <kbd>O</kbd></span></div>
+    <div>얼굴 분석<kbd>⇧⌘F</kbd></div><div>자동 자막<kbd>⇧⌘R</kbd></div>
+    <div>타임라인 창 분리<kbd>⌥⌘T</kbd></div><div>인물 선택 창<kbd>⌥⌘P</kbd></div>
+    <div>저장<kbd>⌘S</kbd></div><div>내보내기<kbd>⌘E</kbd></div>
+  </div>
+
+  <div class="faq" style="margin-top:6mm">
+    <h3>영상이 인터넷으로 전송되나요?</h3><p>아니요. 얼굴 분석과 음성 인식은 모두 컴퓨터 안에서 처리되며, 인터넷 없이도 동작합니다.</p>
+    <h3>모든 얼굴이 100% 가려지나요?</h3><p>아닙니다. 아주 작거나 옆을 보거나 가려진 얼굴은 놓칠 수 있습니다. 주황색 구간을 확인하고 영역 마스크로 보완하세요. 단색 마스크가 가장 안전합니다.</p>
+    <h3>어떤 파일을 열 수 있나요?</h3><p>MOV·MP4·M4V, 사진 JPEG·PNG·HEIC·TIFF, 오디오 M4A·WAV·MP3·AIFF. MKV·WebM은 먼저 MP4로 변환하세요.</p>
+    <h3>앱이 갑자기 꺼지면요?</h3><p>편집 내용은 자동 저장되며, 다시 열면 복구할지 묻습니다.</p>
+  </div>
+  <div class="foot"><span>Veil Studio · 제작 다있쌤 로디 · whisper.cpp / Silero VAD (MIT)</span><span>6</span></div>
+</section>
+
+</body>
+</html>
